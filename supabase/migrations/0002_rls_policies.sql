@@ -1,9 +1,9 @@
 -- =============================================================================
--- BENIT SaaS — Migration 0002: Row Level Security (RLS) & Tenant Isolation
+-- BENIT SaaS — Migration 0002: Strict Row Level Security (RLS) & Realtime Isolation
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. TENANT MEMBERSHIP HELPER FUNCTIONS
+-- 1. TENANT MEMBERSHIP HELPER FUNCTIONS (Supports Org-wide & Store-scoped roles)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.is_org_member(p_org_id UUID)
 RETURNS BOOLEAN
@@ -33,6 +33,7 @@ AS $$
         WHERE m.organization_id = p_org_id
           AND m.user_id = auth.uid()
           AND m.role = 'OWNER'
+          AND m.store_id IS NULL
     );
 $$;
 
@@ -49,6 +50,7 @@ AS $$
         JOIN public.memberships m ON m.organization_id = s.organization_id
         WHERE s.id = p_store_id
           AND m.user_id = auth.uid()
+          AND (m.store_id IS NULL OR m.store_id = p_store_id)
     );
 $$;
 
@@ -84,7 +86,10 @@ CREATE POLICY "profiles_update_own" ON public.profiles
     FOR UPDATE
     TO authenticated
     USING (id = auth.uid())
-    WITH CHECK (id = auth.uid() AND is_platform_admin = (SELECT p.is_platform_admin FROM public.profiles p WHERE p.id = auth.uid()));
+    WITH CHECK (
+        id = auth.uid()
+        AND is_platform_admin = (SELECT p.is_platform_admin FROM public.profiles p WHERE p.id = auth.uid())
+    );
 
 -- -----------------------------------------------------------------------------
 -- 4. ORGANIZATIONS & MEMBERSHIPS POLICIES
@@ -123,6 +128,7 @@ CREATE POLICY "memberships_insert_owner" ON public.memberships
         OR (
             user_id = auth.uid()
             AND role = 'OWNER'
+            AND store_id IS NULL
             AND EXISTS (
                 SELECT 1 FROM public.organizations o
                 WHERE o.id = organization_id AND o.created_by = auth.uid()
@@ -131,24 +137,20 @@ CREATE POLICY "memberships_insert_owner" ON public.memberships
     );
 
 -- -----------------------------------------------------------------------------
--- 5. STORES POLICIES (Authenticated Tenant + Public Published View)
+-- 5. STORES & CATALOG POLICIES (STRICT TENANT ISOLATION — NO DIRECT ANON TABLE READS)
+-- Public visitors NEVER query base tables directly; they access /menu/[slug]
+-- exclusively via `public.get_public_menu_by_slug(p_slug)`, preventing any leak
+-- of internal `stock_quantity`, `low_stock_threshold`, `sku`, or `last_order_number`.
 -- -----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "stores_public_select_published" ON public.stores;
 DROP POLICY IF EXISTS "stores_tenant_all" ON public.stores;
 CREATE POLICY "stores_tenant_all" ON public.stores
     FOR ALL
     TO authenticated
-    USING (public.is_org_member(organization_id))
-    WITH CHECK (public.is_org_member(organization_id));
+    USING (public.has_store_access(id))
+    WITH CHECK (public.is_org_owner(organization_id) OR public.has_store_access(id));
 
-DROP POLICY IF EXISTS "stores_public_select_published" ON public.stores;
-CREATE POLICY "stores_public_select_published" ON public.stores
-    FOR SELECT
-    TO anon, authenticated
-    USING (is_published = true);
-
--- -----------------------------------------------------------------------------
--- 6. CATALOG POLICIES (Categories, Products, Option Groups, Options)
--- -----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "categories_public_select" ON public.categories;
 DROP POLICY IF EXISTS "categories_tenant_all" ON public.categories;
 CREATE POLICY "categories_tenant_all" ON public.categories
     FOR ALL
@@ -156,18 +158,7 @@ CREATE POLICY "categories_tenant_all" ON public.categories
     USING (public.has_store_access(store_id))
     WITH CHECK (public.has_store_access(store_id));
 
-DROP POLICY IF EXISTS "categories_public_select" ON public.categories;
-CREATE POLICY "categories_public_select" ON public.categories
-    FOR SELECT
-    TO anon, authenticated
-    USING (
-        is_active = true
-        AND EXISTS (
-            SELECT 1 FROM public.stores s
-            WHERE s.id = categories.store_id AND s.is_published = true
-        )
-    );
-
+DROP POLICY IF EXISTS "products_public_select" ON public.products;
 DROP POLICY IF EXISTS "products_tenant_all" ON public.products;
 CREATE POLICY "products_tenant_all" ON public.products
     FOR ALL
@@ -175,18 +166,7 @@ CREATE POLICY "products_tenant_all" ON public.products
     USING (public.has_store_access(store_id))
     WITH CHECK (public.has_store_access(store_id));
 
-DROP POLICY IF EXISTS "products_public_select" ON public.products;
-CREATE POLICY "products_public_select" ON public.products
-    FOR SELECT
-    TO anon, authenticated
-    USING (
-        is_archived = false
-        AND EXISTS (
-            SELECT 1 FROM public.stores s
-            WHERE s.id = products.store_id AND s.is_published = true
-        )
-    );
-
+DROP POLICY IF EXISTS "product_option_groups_public_select" ON public.product_option_groups;
 DROP POLICY IF EXISTS "product_option_groups_tenant_all" ON public.product_option_groups;
 CREATE POLICY "product_option_groups_tenant_all" ON public.product_option_groups
     FOR ALL
@@ -194,17 +174,7 @@ CREATE POLICY "product_option_groups_tenant_all" ON public.product_option_groups
     USING (public.has_store_access(store_id))
     WITH CHECK (public.has_store_access(store_id));
 
-DROP POLICY IF EXISTS "product_option_groups_public_select" ON public.product_option_groups;
-CREATE POLICY "product_option_groups_public_select" ON public.product_option_groups
-    FOR SELECT
-    TO anon, authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.stores s
-            WHERE s.id = product_option_groups.store_id AND s.is_published = true
-        )
-    );
-
+DROP POLICY IF EXISTS "product_options_public_select" ON public.product_options;
 DROP POLICY IF EXISTS "product_options_tenant_all" ON public.product_options;
 CREATE POLICY "product_options_tenant_all" ON public.product_options
     FOR ALL
@@ -212,20 +182,8 @@ CREATE POLICY "product_options_tenant_all" ON public.product_options
     USING (public.has_store_access(store_id))
     WITH CHECK (public.has_store_access(store_id));
 
-DROP POLICY IF EXISTS "product_options_public_select" ON public.product_options;
-CREATE POLICY "product_options_public_select" ON public.product_options
-    FOR SELECT
-    TO anon, authenticated
-    USING (
-        is_available = true
-        AND EXISTS (
-            SELECT 1 FROM public.stores s
-            WHERE s.id = product_options.store_id AND s.is_published = true
-        )
-    );
-
 -- -----------------------------------------------------------------------------
--- 7. CUSTOMERS, ORDERS & INVENTORY POLICIES (Strict Tenant Isolation)
+-- 6. CUSTOMERS, ORDERS & INVENTORY POLICIES (Strict Tenant Isolation)
 -- -----------------------------------------------------------------------------
 DROP POLICY IF EXISTS "customers_tenant_all" ON public.customers;
 CREATE POLICY "customers_tenant_all" ON public.customers
@@ -269,8 +227,13 @@ CREATE POLICY "stock_movements_tenant_select" ON public.stock_movements
     USING (public.has_store_access(store_id));
 
 -- -----------------------------------------------------------------------------
--- 8. REALTIME PUBLICATION CONFIGURATION
+-- 7. REALTIME PUBLICATION & REPLICA IDENTITY
+-- Because base tables only allow `authenticated` with `has_store_access(store_id)`,
+-- Supabase Realtime enforces JWT-based tenant isolation automatically.
 -- -----------------------------------------------------------------------------
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
+ALTER TABLE public.products REPLICA IDENTITY FULL;
+
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -281,4 +244,3 @@ BEGIN
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
-

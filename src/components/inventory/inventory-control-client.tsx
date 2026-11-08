@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrencyCents } from "@/lib/utils";
+import { useStoreRealtime } from "@/lib/supabase/use-store-realtime";
 import { adjustProductStockAction } from "@/features/inventory/actions";
 import type {
   Category,
@@ -63,6 +64,7 @@ export function InventoryControlClient({
   const [error, setError] = useState<string | null>(null);
 
   const [isPending, startTransition] = useTransition();
+  useStoreRealtime(storeId, ["products", "stock_movements"], "inventory-center");
 
   const trackedProducts = useMemo(
     () => products.filter((p) => p.track_stock),

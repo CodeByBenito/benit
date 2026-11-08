@@ -1,9 +1,139 @@
 -- =============================================================================
--- BENIT SaaS — Migration 0003: Atomic Transactional RPCs & Storage Setup
+-- BENIT SaaS — Migration 0003: Hardened Atomic RPCs, Public Menu Projection & Storage RLS
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. ATOMIC TENANT ONBOARDING (Organization + Membership + Initial Store)
+-- 1. CONTROLLED PUBLIC DIGITAL MENU PROJECTION (Zero Private Column Leakage)
+-- Returns ONLY sanitized store profile, active categories, and non-archived
+-- products with a boolean `in_stock` flag (never exposing stock_quantity or sku).
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_public_menu_by_slug(p_slug TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_store RECORD;
+    v_categories JSONB;
+    v_products JSONB;
+BEGIN
+    SELECT
+        id,
+        name,
+        slug,
+        description,
+        logo_url,
+        banner_url,
+        phone,
+        whatsapp,
+        address,
+        currency,
+        is_open
+    INTO v_store
+    FROM public.stores
+    WHERE slug = lower(trim(p_slug))
+      AND is_published = true;
+
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id', c.id,
+                'name', c.name,
+                'description', c.description
+            )
+            ORDER BY c.sort_order ASC, c.created_at ASC
+        ),
+        '[]'::jsonb
+    )
+    INTO v_categories
+    FROM public.categories c
+    WHERE c.store_id = v_store.id
+      AND c.is_active = true;
+
+    SELECT COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id', p.id,
+                'category_id', p.category_id,
+                'name', p.name,
+                'description', p.description,
+                'price_cents', p.price_cents,
+                'image_url', p.image_url,
+                'is_available', p.is_available,
+                'in_stock', (NOT p.track_stock OR p.stock_quantity > 0),
+                'option_groups', COALESCE(
+                    (
+                        SELECT jsonb_agg(
+                            jsonb_build_object(
+                                'id', g.id,
+                                'name', g.name,
+                                'min_select', g.min_select,
+                                'max_select', g.max_select,
+                                'is_required', g.is_required,
+                                'options', COALESCE(
+                                    (
+                                        SELECT jsonb_agg(
+                                            jsonb_build_object(
+                                                'id', o.id,
+                                                'name', o.name,
+                                                'price_cents', o.price_cents
+                                            )
+                                            ORDER BY o.sort_order ASC, o.created_at ASC
+                                        )
+                                        FROM public.product_options o
+                                        WHERE o.group_id = g.id
+                                          AND o.store_id = v_store.id
+                                          AND o.is_available = true
+                                    ),
+                                    '[]'::jsonb
+                                )
+                            )
+                            ORDER BY g.sort_order ASC, g.created_at ASC
+                        )
+                        FROM public.product_option_groups g
+                        WHERE g.product_id = p.id
+                          AND g.store_id = v_store.id
+                    ),
+                    '[]'::jsonb
+                )
+            )
+            ORDER BY p.sort_order ASC, p.created_at DESC
+        ),
+        '[]'::jsonb
+    )
+    INTO v_products
+    FROM public.products p
+    WHERE p.store_id = v_store.id
+      AND p.is_archived = false;
+
+    RETURN jsonb_build_object(
+        'store', jsonb_build_object(
+            'id', v_store.id,
+            'name', v_store.name,
+            'slug', v_store.slug,
+            'description', v_store.description,
+            'logo_url', v_store.logo_url,
+            'banner_url', v_store.banner_url,
+            'phone', v_store.phone,
+            'whatsapp', v_store.whatsapp,
+            'address', v_store.address,
+            'currency', v_store.currency,
+            'is_open', v_store.is_open
+        ),
+        'categories', v_categories,
+        'products', v_products
+    );
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- 2. ATOMIC TENANT ONBOARDING (Organization + Membership + Initial Store)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.onboard_organization_and_store(
     p_org_name TEXT,
@@ -29,23 +159,19 @@ BEGIN
         RAISE EXCEPTION 'NOT_AUTHENTICATED: Usuário não autenticado.';
     END IF;
 
-    -- Ensure profile exists
     INSERT INTO public.profiles (id, full_name, email)
     SELECT u.id, COALESCE(u.raw_user_meta_data->>'full_name', split_part(u.email, '@', 1)), COALESCE(u.email, '')
     FROM auth.users u
     WHERE u.id = v_user_id
     ON CONFLICT (id) DO NOTHING;
 
-    -- Create organization
     INSERT INTO public.organizations (name, slug, created_by)
     VALUES (trim(p_org_name), lower(trim(p_org_slug)), v_user_id)
     RETURNING id INTO v_org_id;
 
-    -- Create OWNER membership
-    INSERT INTO public.memberships (organization_id, user_id, role)
-    VALUES (v_org_id, v_user_id, 'OWNER');
+    INSERT INTO public.memberships (organization_id, store_id, user_id, role)
+    VALUES (v_org_id, NULL, v_user_id, 'OWNER');
 
-    -- Create store
     INSERT INTO public.stores (
         organization_id,
         name,
@@ -79,7 +205,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- 2. ATOMIC STOCK ADJUSTMENT (Manual Entry, Exit, Adjustment)
+-- 3. ATOMIC STOCK ADJUSTMENT (Manual Entry, Exit, Adjustment)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.adjust_product_stock_atomic(
     p_store_id UUID,
@@ -109,7 +235,6 @@ BEGIN
         RAISE EXCEPTION 'INVALID_MOVEMENT_TYPE: Tipo de movimentação manual inválido.';
     END IF;
 
-    -- Lock product row
     SELECT * INTO v_product
     FROM public.products
     WHERE id = p_product_id AND store_id = p_store_id
@@ -191,7 +316,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- 3. ATOMIC ORDER CREATION (Digital Menu & Manual Dashboard Registration)
+-- 4. ATOMIC ORDER CREATION (With Option Group min/max/is_required Validation)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.create_order_atomic(
     p_store_id UUID,
@@ -233,9 +358,10 @@ DECLARE
     v_order_item_id UUID;
     v_opt_id UUID;
     v_opt RECORD;
+    v_group_check RECORD;
+    v_selected_opt_ids UUID[];
     v_req_Row RECORD;
 BEGIN
-    -- 1. Validate store and permissions
     SELECT * INTO v_store
     FROM public.stores
     WHERE id = p_store_id
@@ -253,7 +379,6 @@ BEGIN
             RAISE EXCEPTION 'INVALID_INITIAL_STATUS: Pedido manual deve iniciar como NEW ou CONFIRMED.';
         END IF;
     ELSE
-        -- Public Digital Menu validations
         IF NOT v_store.is_published THEN
             RAISE EXCEPTION 'STORE_UNPUBLISHED: O cardápio digital desta loja não está publicado.';
         END IF;
@@ -265,7 +390,7 @@ BEGIN
         v_fee := 0;
     END IF;
 
-    -- 2. Check idempotency key to prevent duplicate submissions
+    -- Idempotency check
     IF p_idempotency_key IS NOT NULL AND trim(p_idempotency_key) <> '' THEN
         SELECT id, order_number, status, total_cents
         INTO v_existing_order
@@ -287,7 +412,7 @@ BEGIN
         RAISE EXCEPTION 'EMPTY_ORDER: O pedido deve conter pelo menos um item.';
     END IF;
 
-    -- 3. Lock and validate aggregated product quantities first (ordered by product_id to avoid deadlocks)
+    -- Lock and validate aggregated product quantities (ordered by product_id to prevent deadlocks)
     FOR v_req_Row IN
         SELECT
             (elem->>'product_id')::UUID AS product_id,
@@ -319,7 +444,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 4. Upsert customer scoped to store
+    -- Upsert store-scoped customer
     v_normalized_phone := regexp_replace(COALESCE(p_customer_phone, ''), '[^0-9]', '', 'g');
     IF char_length(v_normalized_phone) < 8 THEN
         v_normalized_phone := trim(p_customer_phone);
@@ -332,7 +457,7 @@ BEGIN
         last_order_at = now()
     RETURNING id INTO v_customer_id;
 
-    -- 5. Increment store order_number atomically
+    -- Increment sequential order_number atomically
     UPDATE public.stores
     SET last_order_number = last_order_number + 1
     WHERE id = p_store_id
@@ -340,7 +465,6 @@ BEGIN
 
     v_should_deduct_stock := (p_initial_status = 'CONFIRMED');
 
-    -- 6. Insert initial order header (totals updated after item calculation)
     INSERT INTO public.orders (
         store_id,
         customer_id,
@@ -381,7 +505,7 @@ BEGIN
     )
     RETURNING id INTO v_order_id;
 
-    -- 7. Process each item, calculate authoritative server prices, and snapshot
+    -- Process each item and validate option group rules on the server
     FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
     LOOP
         SELECT * INTO v_product
@@ -390,8 +514,55 @@ BEGIN
 
         v_item_qty := (v_item->>'quantity')::INTEGER;
         v_options_unit_cents := 0;
+        v_selected_opt_ids := ARRAY[]::UUID[];
 
-        -- Insert order_item first
+        IF v_item ? 'option_ids' AND jsonb_typeof(v_item->'option_ids') = 'array' THEN
+            SELECT COALESCE(array_agg((val #>> '{}')::UUID), ARRAY[]::UUID[])
+            INTO v_selected_opt_ids
+            FROM jsonb_array_elements(v_item->'option_ids') AS val;
+        END IF;
+
+        -- Prevent duplicate option_ids in the same order item
+        IF COALESCE(array_length(v_selected_opt_ids, 1), 0) <> (
+            SELECT COUNT(DISTINCT u) FROM unnest(v_selected_opt_ids) AS u
+        ) THEN
+            RAISE EXCEPTION 'DUPLICATE_OPTION: O mesmo item opcional não pode ser enviado duplicado em "%".', v_product.name;
+        END IF;
+
+        -- Enforce min_select, max_select, and is_required for every option group of this product
+        FOR v_group_check IN
+            SELECT
+                pog.id,
+                pog.name,
+                pog.min_select,
+                pog.max_select,
+                pog.is_required,
+                COUNT(po.id)::INTEGER AS chosen_count
+            FROM public.product_option_groups pog
+            LEFT JOIN public.product_options po
+                ON po.group_id = pog.id
+               AND po.store_id = p_store_id
+               AND po.id = ANY(v_selected_opt_ids)
+            WHERE pog.product_id = v_product.id
+              AND pog.store_id = p_store_id
+            GROUP BY pog.id, pog.name, pog.min_select, pog.max_select, pog.is_required
+        LOOP
+            IF (v_group_check.is_required AND v_group_check.chosen_count < GREATEST(1, v_group_check.min_select))
+               OR (v_group_check.chosen_count < v_group_check.min_select) THEN
+                RAISE EXCEPTION 'OPTION_MIN_REQUIRED: Selecione pelo menos % opção(ões) em "%" para o produto "%".',
+                    GREATEST(CASE WHEN v_group_check.is_required THEN 1 ELSE 0 END, v_group_check.min_select),
+                    v_group_check.name,
+                    v_product.name;
+            END IF;
+
+            IF v_group_check.chosen_count > v_group_check.max_select THEN
+                RAISE EXCEPTION 'OPTION_MAX_EXCEEDED: O grupo "%" permite no máximo % opção(ões) em "%".',
+                    v_group_check.name,
+                    v_group_check.max_select,
+                    v_product.name;
+            END IF;
+        END LOOP;
+
         INSERT INTO public.order_items (
             store_id,
             order_id,
@@ -416,43 +587,40 @@ BEGIN
         )
         RETURNING id INTO v_order_item_id;
 
-        -- Validate and snapshot selected options if provided
-        IF v_item ? 'option_ids' AND jsonb_typeof(v_item->'option_ids') = 'array' THEN
-            FOR v_opt_id IN SELECT (val #>> '{}')::UUID FROM jsonb_array_elements(v_item->'option_ids') AS val
-            LOOP
-                SELECT po.*, pog.name AS group_name, pog.product_id
-                INTO v_opt
-                FROM public.product_options po
-                JOIN public.product_option_groups pog ON pog.id = po.group_id
-                WHERE po.id = v_opt_id
-                  AND po.store_id = p_store_id
-                  AND pog.product_id = v_product.id
-                  AND po.is_available = true;
+        FOREACH v_opt_id IN ARRAY v_selected_opt_ids
+        LOOP
+            SELECT po.*, pog.name AS group_name
+            INTO v_opt
+            FROM public.product_options po
+            JOIN public.product_option_groups pog ON pog.id = po.group_id AND pog.store_id = po.store_id
+            WHERE po.id = v_opt_id
+              AND po.store_id = p_store_id
+              AND pog.product_id = v_product.id
+              AND po.is_available = true;
 
-                IF NOT FOUND THEN
-                    RAISE EXCEPTION 'INVALID_OPTION: Uma das opções selecionadas para "%" é inválida ou está indisponível.', v_product.name;
-                END IF;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'INVALID_OPTION: Uma das opções selecionadas para "%" é inválida ou está indisponível.', v_product.name;
+            END IF;
 
-                v_options_unit_cents := v_options_unit_cents + v_opt.price_cents;
+            v_options_unit_cents := v_options_unit_cents + v_opt.price_cents;
 
-                INSERT INTO public.order_item_options (
-                    store_id,
-                    order_item_id,
-                    option_id,
-                    group_name_snapshot,
-                    option_name_snapshot,
-                    price_cents
-                )
-                VALUES (
-                    p_store_id,
-                    v_order_item_id,
-                    v_opt.id,
-                    v_opt.group_name,
-                    v_opt.name,
-                    v_opt.price_cents
-                );
-            END LOOP;
-        END IF;
+            INSERT INTO public.order_item_options (
+                store_id,
+                order_item_id,
+                option_id,
+                group_name_snapshot,
+                option_name_snapshot,
+                price_cents
+            )
+            VALUES (
+                p_store_id,
+                v_order_item_id,
+                v_opt.id,
+                v_opt.group_name,
+                v_opt.name,
+                v_opt.price_cents
+            );
+        END LOOP;
 
         v_total_item_cents := (v_product.price_cents + v_options_unit_cents) * v_item_qty;
         v_subtotal_cents := v_subtotal_cents + v_total_item_cents;
@@ -462,7 +630,6 @@ BEGIN
             total_item_cents = v_total_item_cents
         WHERE id = v_order_item_id;
 
-        -- Deduct stock immediately if initial status is CONFIRMED and product tracks stock
         IF v_should_deduct_stock AND v_product.track_stock THEN
             UPDATE public.products
             SET stock_quantity = stock_quantity - v_item_qty
@@ -492,10 +659,12 @@ BEGIN
                 'Baixa automática na confirmação do pedido #' || v_order_number,
                 v_user_id
             );
+
+            -- Refresh v_product.stock_quantity if another line in the same order references the same product
+            v_product.stock_quantity := v_product.stock_quantity - v_item_qty;
         END IF;
     END LOOP;
 
-    -- 8. Update final authoritative order totals and customer stats
     v_total_cents := GREATEST(0, v_subtotal_cents - GREATEST(0, v_discount) + GREATEST(0, v_fee));
 
     UPDATE public.orders
@@ -509,7 +678,6 @@ BEGIN
         last_order_at = now()
     WHERE id = v_customer_id;
 
-    -- 9. Log status history
     INSERT INTO public.order_status_history (
         store_id,
         order_id,
@@ -539,7 +707,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- 4. ATOMIC ORDER STATUS TRANSITION (With Stock Deduction & Reversal)
+-- 5. ATOMIC ORDER STATUS TRANSITION (With Stock Deduction & Reversal)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.transition_order_status_atomic(
     p_store_id UUID,
@@ -563,7 +731,6 @@ BEGIN
         RAISE EXCEPTION 'FORBIDDEN: Sem permissão para atualizar pedidos desta loja.';
     END IF;
 
-    -- Lock order row
     SELECT * INTO v_order
     FROM public.orders
     WHERE id = p_order_id AND store_id = p_store_id
@@ -573,7 +740,6 @@ BEGIN
         RAISE EXCEPTION 'ORDER_NOT_FOUND: Pedido não encontrado.';
     END IF;
 
-    -- Idempotent no-op if already in target status
     IF v_order.status = p_new_status THEN
         RETURN jsonb_build_object(
             'order_id', v_order.id,
@@ -584,7 +750,6 @@ BEGIN
         );
     END IF;
 
-    -- Validate state machine transitions
     IF v_order.status = 'CANCELLED' THEN
         RAISE EXCEPTION 'INVALID_TRANSITION: Não é possível alterar o status de um pedido cancelado.';
     END IF;
@@ -595,9 +760,7 @@ BEGIN
 
     v_stock_deducted := v_order.stock_deducted;
 
-    -- Case A: Moving from NEW to an active confirmed stage (CONFIRMED, PREPARING, READY, COMPLETED)
     IF NOT v_order.stock_deducted AND p_new_status IN ('CONFIRMED', 'PREPARING', 'READY', 'COMPLETED') THEN
-        -- First validate and lock all products in order of product_id
         FOR v_item IN
             SELECT
                 oi.product_id,
@@ -620,7 +783,6 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- Perform per-item deduction and record ledger movements
         FOR v_item IN
             SELECT oi.id AS order_item_id, oi.product_id, oi.quantity
             FROM public.order_items oi
@@ -666,7 +828,6 @@ BEGIN
         v_stock_deducted := true;
     END IF;
 
-    -- Case B: Cancelling an order that already had stock deducted
     IF p_new_status = 'CANCELLED' AND v_order.stock_deducted THEN
         FOR v_item IN
             SELECT oi.id AS order_item_id, oi.product_id, oi.quantity
@@ -714,7 +875,6 @@ BEGIN
         v_stock_deducted := false;
     END IF;
 
-    -- If cancelled, also adjust customer total_spent_cents
     IF p_new_status = 'CANCELLED' AND v_order.customer_id IS NOT NULL THEN
         UPDATE public.customers
         SET total_orders = GREATEST(0, total_orders - 1),
@@ -722,13 +882,11 @@ BEGIN
         WHERE id = v_order.customer_id;
     END IF;
 
-    -- Update order status
     UPDATE public.orders
     SET status = p_new_status,
         stock_deducted = v_stock_deducted
     WHERE id = v_order.id;
 
-    -- Append status history
     INSERT INTO public.order_status_history (
         store_id,
         order_id,
@@ -756,15 +914,48 @@ BEGIN
 END;
 $$;
 
--- Grant execute permissions on public RPCs
+-- -----------------------------------------------------------------------------
+-- 6. EXPLICIT FUNCTION PRIVILEGE HARDENING (REVOKE PUBLIC/ANON -> GRANT SCOPED)
+-- -----------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.get_public_menu_by_slug(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_menu_by_slug(TEXT) TO anon, authenticated;
+
+REVOKE ALL ON FUNCTION public.onboard_organization_and_store FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.onboard_organization_and_store TO authenticated;
+
+REVOKE ALL ON FUNCTION public.adjust_product_stock_atomic FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.adjust_product_stock_atomic TO authenticated;
+
+REVOKE ALL ON FUNCTION public.create_order_atomic FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic TO anon, authenticated;
+
+REVOKE ALL ON FUNCTION public.transition_order_status_atomic FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.transition_order_status_atomic TO authenticated;
 
 -- -----------------------------------------------------------------------------
--- 5. SUPABASE STORAGE BUCKET FOR PRODUCT & STORE IMAGES
+-- 7. TENANT-ISOLATED SUPABASE STORAGE POLICIES (Path: <store_id>/...)
+-- Helper safely parses UUID folder prefix so invalid paths return false instead of throwing.
 -- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.can_manage_store_asset(p_object_name TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_folder TEXT;
+    v_store_uuid UUID;
+BEGIN
+    v_folder := split_part(COALESCE(p_object_name, ''), '/', 1);
+    IF v_folder !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        RETURN false;
+    END IF;
+    v_store_uuid := v_folder::UUID;
+    RETURN public.has_store_access(v_store_uuid);
+END;
+$$;
+
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('benit-assets', 'benit-assets', true)
 ON CONFLICT (id) DO NOTHING;
@@ -779,17 +970,29 @@ DROP POLICY IF EXISTS "benit_assets_auth_insert" ON storage.objects;
 CREATE POLICY "benit_assets_auth_insert" ON storage.objects
     FOR INSERT
     TO authenticated
-    WITH CHECK (bucket_id = 'benit-assets');
+    WITH CHECK (
+        bucket_id = 'benit-assets'
+        AND public.can_manage_store_asset(name)
+    );
 
 DROP POLICY IF EXISTS "benit_assets_auth_update" ON storage.objects;
 CREATE POLICY "benit_assets_auth_update" ON storage.objects
     FOR UPDATE
     TO authenticated
-    USING (bucket_id = 'benit-assets');
+    USING (
+        bucket_id = 'benit-assets'
+        AND public.can_manage_store_asset(name)
+    )
+    WITH CHECK (
+        bucket_id = 'benit-assets'
+        AND public.can_manage_store_asset(name)
+    );
 
 DROP POLICY IF EXISTS "benit_assets_auth_delete" ON storage.objects;
 CREATE POLICY "benit_assets_auth_delete" ON storage.objects
     FOR DELETE
     TO authenticated
-    USING (bucket_id = 'benit-assets');
-
+    USING (
+        bucket_id = 'benit-assets'
+        AND public.can_manage_store_asset(name)
+    );

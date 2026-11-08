@@ -51,3 +51,4 @@ Para cada estabelecimento piloto (ex: Hamburgueria, Pizzaria ou Cafeteria):
    - Teste também um pedido manual no balcão e um cancelamento para confirmar o estorno automático no histórico de estoque.
 5. **Isolamento Multi-Tenant:**
    - Confirme que a Loja Piloto A visualiza exclusivamente seus próprios produtos, pedidos, clientes e estoque, sem qualquer acesso aos dados da Loja Piloto B.
+

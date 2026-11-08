@@ -39,7 +39,10 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     return null;
   }
 
-  const primaryMembership = memberships[0] as Membership;
+  const typedMemberships = memberships as Membership[];
+  // Prefer org-wide membership (store_id === null, e.g. OWNER), otherwise first store-scoped membership
+  const primaryMembership =
+    typedMemberships.find((m) => m.store_id === null) ?? typedMemberships[0];
 
   const { data: organization } = await supabase
     .from("organizations")
@@ -51,11 +54,25 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     return null;
   }
 
-  const { data: stores } = await supabase
+  let storesQuery = supabase
     .from("stores")
     .select("*")
     .eq("organization_id", organization.id)
     .order("created_at", { ascending: true });
+
+  // If user does not hold an org-wide membership, restrict to explicitly assigned store_ids
+  const hasOrgWideAccess = typedMemberships.some(
+    (m) =>
+      m.organization_id === organization.id && m.store_id === null
+  );
+  if (!hasOrgWideAccess) {
+    const allowedStoreIds = typedMemberships
+      .filter((m) => m.organization_id === organization.id && m.store_id)
+      .map((m) => m.store_id as string);
+    storesQuery = storesQuery.in("id", allowedStoreIds);
+  }
+
+  const { data: stores } = await storesQuery;
 
   if (!stores || stores.length === 0) {
     return null;

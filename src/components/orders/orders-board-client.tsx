@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
@@ -28,7 +28,7 @@ import {
   formatPhoneBR,
   parsePriceToCents,
 } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { useStoreRealtime } from "@/lib/supabase/use-store-realtime";
 import {
   createOrderAction,
   transitionOrderStatusAction,
@@ -93,7 +93,11 @@ export function OrdersBoardClient({
   >("ALL");
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const { connected: realtimeConnected } = useStoreRealtime(
+    storeId,
+    ["orders", "products"],
+    "orders-board"
+  );
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -118,40 +122,6 @@ export function OrdersBoardClient({
   ]);
 
   const [isPending, startTransition] = useTransition();
-
-  // Subscribe to Supabase Realtime for instant order synchronization
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`orders-realtime-${storeId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-          filter: `store_id=eq.${storeId}`,
-        },
-        () => {
-          router.refresh();
-        }
-      )
-      .subscribe((status) => {
-        setRealtimeConnected(status === "SUBSCRIBED");
-      });
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        router.refresh();
-      }
-    };
-    window.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      window.removeEventListener("visibilitychange", handleVisibility);
-      supabase.removeChannel(channel);
-    };
-  }, [storeId, router]);
 
   const filteredOrders = useMemo(() => {
     return initialOrders.filter((o) => {

@@ -103,3 +103,4 @@ BEGIN
 
     RAISE NOTICE 'Seed de desenvolvimento aplicado com sucesso para a loja %.', v_store_id;
 END $$;
+

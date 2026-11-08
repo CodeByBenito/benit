@@ -31,6 +31,9 @@ export interface Organization {
   name: string;
   slug: string;
   document_number: string | null;
+  plan_tier: string;
+  subscription_status: string;
+  max_stores: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -39,6 +42,7 @@ export interface Organization {
 export interface Membership {
   id: string;
   organization_id: string;
+  store_id: string | null;
   user_id: string;
   role: MembershipRole;
   created_at: string;
