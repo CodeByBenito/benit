@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-inter: "Inter", system-ui, -apple-system, sans-serif;
+    --font-manrope: "Manrope", "Inter", system-ui, -apple-system, sans-serif;
+    --background: #101010;
+    --surface: #1c1c1c;
+    --surface-card: #242424;
+    --brand: #ff6a00;
+    --foreground: #f3f3f0;
+    --foreground-muted: #a1a1a1;
+    --border: #333333;
+  }
+
+  * {
+    border-color: #333333;
+  }
+
+  html,
+  body {
+    background-color: #101010;
+    color: #f3f3f0;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle custom dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #101010;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333333;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #474747;
+}
+
