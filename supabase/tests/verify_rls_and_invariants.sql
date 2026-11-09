@@ -113,7 +113,8 @@ BEGIN
     BEGIN
         PERFORM public.create_order_atomic(
             v_store_a, 'DIGITAL_MENU', 'PICKUP', 'Cliente Teste', '11988881111',
-            jsonb_build_array(jsonb_build_object('product_id', v_prod_a, 'quantity', 1, 'option_ids', '[]'::jsonb))
+            jsonb_build_array(jsonb_build_object('product_id', v_prod_a, 'quantity', 1, 'option_ids', '[]'::jsonb)),
+            p_payment_method => 'CASH'
         );
         RAISE EXCEPTION 'FALHA DE VALIDAÇÃO: Pedido aceito sem opcional obrigatório!';
     EXCEPTION
@@ -126,11 +127,13 @@ BEGIN
     -- Criar 2 pedidos concorrentes válidos com o opcional obrigatório
     v_order_1 := public.create_order_atomic(
         v_store_a, 'DIGITAL_MENU', 'PICKUP', 'Cliente 1', '11988881111',
-        jsonb_build_array(jsonb_build_object('product_id', v_prod_a, 'quantity', 1, 'option_ids', jsonb_build_array(v_opt_a1)))
+        jsonb_build_array(jsonb_build_object('product_id', v_prod_a, 'quantity', 1, 'option_ids', jsonb_build_array(v_opt_a1))),
+        p_payment_method => 'CASH'
     );
     v_order_2 := public.create_order_atomic(
         v_store_a, 'DIGITAL_MENU', 'PICKUP', 'Cliente 2', '11988882222',
-        jsonb_build_array(jsonb_build_object('product_id', v_prod_a, 'quantity', 1, 'option_ids', jsonb_build_array(v_opt_a1)))
+        jsonb_build_array(jsonb_build_object('product_id', v_prod_a, 'quantity', 1, 'option_ids', jsonb_build_array(v_opt_a1))),
+        p_payment_method => 'CASH'
     );
 
     -- Confirmar Pedido 1 consome a última unidade (1 -> 0)
