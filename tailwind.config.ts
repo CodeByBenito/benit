@@ -101,6 +101,10 @@ const config: Config = {
           from: { transform: "translateX(100%)" },
           to: { transform: "translateX(0)" },
         },
+        "slide-in-left": {
+          from: { transform: "translateX(-100%)" },
+          to: { transform: "translateX(0)" },
+        },
         "slide-in-bottom": {
           from: { transform: "translateY(100%)" },
           to: { transform: "translateY(0)" },
@@ -131,6 +135,7 @@ const config: Config = {
       animation: {
         "fade-up": "fade-up 420ms cubic-bezier(0.16,1,0.3,1) both",
         "slide-in-right": "slide-in-right 420ms cubic-bezier(0.16,1,0.3,1)",
+        "slide-in-left": "slide-in-left 420ms cubic-bezier(0.16,1,0.3,1)",
         "slide-in-bottom": "slide-in-bottom 420ms cubic-bezier(0.16,1,0.3,1)",
         "overlay-in": "overlay-in 220ms ease-out",
         "scale-in": "scale-in 220ms cubic-bezier(0.16,1,0.3,1)",

@@ -1,1053 +1,327 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Eye,
-  Flame,
-  Loader2,
-  Maximize2,
-  MessageCircle,
-  Minimize2,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Bell, BellOff, Clock, CreditCard, Flame, Maximize2, MessageSquareText, Minimize2, Plus, Search, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  buildWhatsAppUrl,
-  formatCurrencyCents,
-  formatElapsedMinutes,
-  formatPhoneBR,
-  parsePriceToCents,
-} from "@/lib/utils";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Segmented } from "@/components/ui/segmented";
+import { toast } from "@/components/ui/toast";
+import { transitionOrderStatusAction } from "@/features/orders/actions";
+import { FULFILLMENT_LABEL, ORDER_STATUS_LABEL, PAYMENT_STATUS_LABEL } from "@/lib/labels";
 import { useStoreRealtime } from "@/lib/supabase/use-store-realtime";
-import {
-  createOrderAction,
-  transitionOrderStatusAction,
-} from "@/features/orders/actions";
-import type {
-  FulfillmentType,
-  Order,
-  OrderStatus,
-  Product,
-} from "@/types/domain.types";
+import { cn, formatCurrencyCents } from "@/lib/utils";
+import type { FulfillmentType, Order, OrderStatus, Product } from "@/types/domain.types";
+import { ManualOrderDialog } from "./manual-order-dialog";
+import { OrderDetailSheet } from "./order-detail-sheet";
+import { BOARD_COLUMNS, elapsedLabel, minutesSince, NEXT_ACTION, playChime } from "./order-meta";
 
-const KANBAN_COLUMNS: {
-  status: OrderStatus;
-  title: string;
-  dotColor: string;
-}[] = [
-  { status: "NEW", title: "NOVOS", dotColor: "bg-brand" },
-  { status: "CONFIRMED", title: "CONFIRMADOS", dotColor: "bg-sky-400" },
-  { status: "PREPARING", title: "EM PREPARO", dotColor: "bg-amber-400" },
-  { status: "READY", title: "PRONTOS", dotColor: "bg-emerald-400" },
-];
+const SOUND_KEY = "benit:orders:sound";
 
-const NEXT_STATUS_ACTION: Partial<
-  Record<OrderStatus, { next: OrderStatus; label: string }>
-> = {
-  NEW: { next: "CONFIRMED", label: "Confirmar Pedido" },
-  CONFIRMED: { next: "PREPARING", label: "Iniciar Preparo" },
-  PREPARING: { next: "READY", label: "Marcar Pronto" },
-  READY: { next: "COMPLETED", label: "Concluir Entrega" },
-};
-
-const FULFILLMENT_LABELS: Record<FulfillmentType, string> = {
-  DINE_IN: "MESA",
-  DELIVERY: "DELIVERY",
-  PICKUP: "RETIRADA",
-};
-
-interface ManualOrderLine {
-  productId: string;
-  quantity: number;
-  notes: string;
-}
-
-export function OrdersBoardClient({
-  storeId,
-  storeName,
-  initialOrders,
-  products,
-}: {
-  storeId: string;
-  storeName: string;
-  initialOrders: Order[];
-  products: Product[];
-}) {
+export function OrdersBoardClient({ storeId, storeName, initialOrders, products }: { storeId: string; storeName: string; initialOrders: Order[]; products: Product[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  const [viewMode, setViewMode] = useState<"BOARD" | "HISTORY">("BOARD");
-  const [focusMode, setFocusMode] = useState(false);
-  const [fulfillmentFilter, setFulfillmentFilter] = useState<
-    "ALL" | FulfillmentType
-  >("ALL");
+  const { connected } = useStoreRealtime(storeId, ["orders", "products"], "orders-board");
+  const [view, setView] = useState<"board" | "history">("board");
+  const [focus, setFocus] = useState(false);
+  const [filter, setFilter] = useState<"ALL" | FulfillmentType>("ALL");
   const [urgentOnly, setUrgentOnly] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const { connected: realtimeConnected } = useStoreRealtime(
-    storeId,
-    ["orders", "products"],
-    "orders-board"
-  );
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(searchParams.get("new") === "1");
+  const [sound, setSound] = useState(true);
+  const [pending, start] = useTransition();
+  const [, tick] = useState(0);
+  const seen = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
 
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  // Re-render every 30s so elapsed timers stay honest.
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
-  // Manual Order Modal State
-  const [manualModalOpen, setManualModalOpen] = useState(
-    searchParams.get("new") === "1"
-  );
-  const [manualCustomerName, setManualCustomerName] = useState("");
-  const [manualCustomerPhone, setManualCustomerPhone] = useState("");
-  const [manualFulfillment, setManualFulfillment] =
-    useState<FulfillmentType>("DINE_IN");
-  const [manualTableRef, setManualTableRef] = useState("");
-  const [manualInitialStatus, setManualInitialStatus] = useState<
-    "CONFIRMED" | "NEW"
-  >("CONFIRMED");
-  const [manualDiscountStr, setManualDiscountStr] = useState("0,00");
-  const [manualFeeStr, setManualFeeStr] = useState("0,00");
-  const [manualNotes, setManualNotes] = useState("");
-  const [manualLines, setManualLines] = useState<ManualOrderLine[]>([
-    { productId: products[0]?.id ?? "", quantity: 1, notes: "" },
-  ]);
+  useEffect(() => {
+    try {
+      setSound(window.localStorage.getItem(SOUND_KEY) !== "off");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
-  const [isPending, startTransition] = useTransition();
+  // Detect orders that just arrived as NEW: chime + arrival highlight.
+  useEffect(() => {
+    const newIds = initialOrders.filter((o) => o.status === "NEW").map((o) => o.id);
+    if (seen.current === null) {
+      seen.current = new Set(newIds);
+      return;
+    }
+    const arrived = newIds.filter((id) => !seen.current!.has(id));
+    newIds.forEach((id) => seen.current!.add(id));
+    if (arrived.length) {
+      setFresh(new Set(arrived));
+      if (sound) playChime();
+      const first = initialOrders.find((o) => o.id === arrived[0]);
+      if (first) toast(`Novo pedido #${first.order_number}`, { description: `${first.customer_name_snapshot} · ${formatCurrencyCents(first.total_cents)}` });
+      setTimeout(() => setFresh(new Set()), 2500);
+    }
+  }, [initialOrders, sound]);
 
-  const filteredOrders = useMemo(() => {
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return initialOrders.filter((o) => {
-      const matchesFulfillment =
-        fulfillmentFilter === "ALL" || o.fulfillment_type === fulfillmentFilter;
-
-      const q = searchQuery.trim().toLowerCase();
-      const matchesSearch =
-        !q ||
+      if (filter !== "ALL" && o.fulfillment_type !== filter) return false;
+      if (urgentOnly && minutesSince(o.created_at) < 15) return false;
+      if (!q) return true;
+      return (
         String(o.order_number).includes(q) ||
         o.customer_name_snapshot.toLowerCase().includes(q) ||
-        o.customer_phone_snapshot.toLowerCase().includes(q) ||
-        (o.table_or_reference ?? "").toLowerCase().includes(q);
-
-      const ageMins = (Date.now() - new Date(o.created_at).getTime()) / 60000;
-      const matchesUrgent = !urgentOnly || ageMins >= 15;
-
-      return matchesFulfillment && matchesSearch && matchesUrgent;
+        o.customer_phone_snapshot.includes(q) ||
+        (o.table_or_reference ?? "").toLowerCase().includes(q)
+      );
     });
-  }, [initialOrders, fulfillmentFilter, searchQuery, urgentOnly]);
+  }, [initialOrders, filter, urgentOnly, query]);
 
-  function handleTransitionStatus(
-    orderId: string,
-    newStatus: OrderStatus,
-    reason?: string
-  ) {
-    setActionError(null);
-    startTransition(async () => {
-      const res = await transitionOrderStatusAction({
-        storeId,
-        orderId,
-        newStatus,
-        reason,
-      });
+  const awaiting = filtered.filter((o) => o.status === "AWAITING_PAYMENT");
+  const selected = initialOrders.find((o) => o.id === selectedId) ?? null;
 
+  function transition(order: Order, status: OrderStatus, reason?: string) {
+    start(async () => {
+      const res = await transitionOrderStatusAction({ storeId, orderId: order.id, newStatus: status, reason });
       if (!res.success) {
-        setActionError(res.error ?? "Erro ao atualizar status do pedido.");
-      } else {
-        if (selectedOrder?.id === orderId) {
-          setSelectedOrder((prev) =>
-            prev ? { ...prev, status: newStatus } : null
-          );
-        }
-        router.refresh();
+        toast.error(res.error ?? "Não foi possível atualizar o pedido.");
+        return;
       }
+      const refund = (res.data as { refund_required?: boolean } | undefined)?.refund_required;
+      toast.success(`#${order.order_number} → ${ORDER_STATUS_LABEL[status]}`, refund ? { description: "Estorno solicitado ao Mercado Pago." } : undefined);
+      if (status === "CANCELLED" || status === "COMPLETED") setSelectedId(null);
+      router.refresh();
     });
   }
 
-  function handleCreateManualOrder(e: React.FormEvent) {
-    e.preventDefault();
-    setActionError(null);
-
-    const validLines = manualLines.filter(
-      (l) => l.productId && l.quantity > 0
-    );
-    if (validLines.length === 0) {
-      setActionError("Selecione pelo menos 1 produto válido.");
-      return;
+  function toggleSound() {
+    const next = !sound;
+    setSound(next);
+    try {
+      window.localStorage.setItem(SOUND_KEY, next ? "on" : "off");
+    } catch {
+      /* ignore */
     }
-
-    startTransition(async () => {
-      const res = await createOrderAction({
-        storeId,
-        source: "MANUAL",
-        fulfillmentType: manualFulfillment,
-        customerName: manualCustomerName,
-        customerPhone: manualCustomerPhone,
-        tableOrReference: manualTableRef || undefined,
-        notes: manualNotes || undefined,
-        discountCents: parsePriceToCents(manualDiscountStr),
-        feeCents: parsePriceToCents(manualFeeStr),
-        initialStatus: manualInitialStatus,
-        idempotencyKey: `man-${storeId}-${Date.now()}`,
-        items: validLines.map((l) => ({
-          product_id: l.productId,
-          quantity: l.quantity,
-          option_ids: [],
-          notes: l.notes || undefined,
-        })),
-      });
-
-      if (!res.success) {
-        setActionError(res.error ?? "Falha ao registrar pedido manual.");
-      } else {
-        setManualModalOpen(false);
-        setManualCustomerName("");
-        setManualCustomerPhone("");
-        setManualTableRef("");
-        setManualNotes("");
-        router.refresh();
-      }
-    });
+    if (next) playChime();
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header (collapses in Focus Mode like reference screenshot) */}
-      {!focusMode && (
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+    <div className={cn("space-y-6", focus && "fixed inset-0 z-40 overflow-y-auto bg-background p-4 sm:p-6")}>
+      {!focus ? (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="font-heading text-2xl font-bold text-foreground">
-                Board por estágios
-              </h1>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
-                  realtimeConnected
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                    : "border-border bg-surface text-foreground-muted"
-                }`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    realtimeConnected ? "bg-emerald-400" : "bg-amber-400"
-                  }`}
-                />
-                {realtimeConnected ? "Ao Vivo" : "Sincronizado"}
-              </span>
-            </div>
-            <p className="text-xs text-foreground-muted">
-              Acompanhamento operacional em tempo real dos pedidos de{" "}
-              {storeName}.
+            <p className="eyebrow mb-2 flex items-center gap-2">
+              <span className={cn("h-1.5 w-1.5 rounded-full", connected ? "animate-pulse-dot bg-success" : "bg-warning")} />
+              {connected ? "Ao vivo" : "Sincronizando"}
             </p>
+            <h1 className="font-display text-display-sm font-extrabold sm:text-3xl">Pedidos</h1>
+            <p className="mt-1.5 text-sm text-foreground-muted">Do cardápio, do balcão e da mesa — em tempo real em {storeName}.</p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => router.refresh()}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span>Atualizar</span>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={toggleSound} aria-label={sound ? "Desativar som de novos pedidos" : "Ativar som de novos pedidos"} title={sound ? "Som ligado" : "Som desligado"}>
+              {sound ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
             </Button>
-            <Button size="sm" onClick={() => setManualModalOpen(true)}>
-              <Plus className="h-4 w-4" />
-              <span>Novo Pedido Manual</span>
+            <Button onClick={() => setManualOpen(true)}>
+              <Plus className="h-4 w-4" /> Pedido no balcão
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Focus Mode Banner + Filter Bar (matching Monify POS reference UI) */}
-      <div className="rounded-xl border border-border bg-surface-card p-3.5 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(
-              [
-                { key: "ALL", label: "TODOS" },
-                { key: "DINE_IN", label: "MESA" },
-                { key: "DELIVERY", label: "DELIVERY" },
-                { key: "PICKUP", label: "RETIRADA" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setFulfillmentFilter(tab.key)}
-                className={`rounded-lg px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors ${
-                  fulfillmentFilter === tab.key
-                    ? "bg-brand text-white"
-                    : "bg-surface text-foreground-muted hover:text-foreground border border-border"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setUrgentOnly(!urgentOnly)}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors ${
-                urgentOnly
-                  ? "border-amber-500/40 bg-amber-500/15 text-amber-400"
-                  : "border-border bg-surface text-foreground-muted hover:text-foreground"
-              }`}
-            >
-              <Flame className="h-3.5 w-3.5 text-brand" />
-              <span>SÓ URGENTES (+15m)</span>
-            </button>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            name="Filtrar atendimento"
+            value={filter}
+            onChange={setFilter}
+            className="w-full sm:w-auto"
+            options={[
+              { value: "ALL", label: "Todos" },
+              { value: "DELIVERY", label: "Entrega" },
+              { value: "PICKUP", label: "Retirada" },
+              { value: "DINE_IN", label: "Mesa" },
+            ]}
+          />
+          <button
+            type="button"
+            onClick={() => setUrgentOnly((v) => !v)}
+            aria-pressed={urgentOnly}
+            className={cn(
+              "inline-flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm transition-colors",
+              urgentOnly ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-foreground-muted hover:text-foreground"
+            )}
+          >
+            <Flame className="h-4 w-4" /> Atrasados (+15 min)
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative basis-full sm:basis-auto sm:flex-1 lg:w-72 lg:flex-none">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-subtle" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Nº, cliente, telefone ou mesa"
+              aria-label="Buscar pedidos"
+              className="h-11 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-sm placeholder:text-foreground-subtle focus-visible:border-brand/60 focus-visible:outline-none"
+            />
           </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative w-48 sm:w-64">
-              <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-foreground-muted" />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar #pedido, cliente, mesa..."
-                className="h-8 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-xs text-foreground placeholder:text-foreground-muted focus:outline-none focus:ring-1 focus:ring-brand"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setViewMode(viewMode === "BOARD" ? "HISTORY" : "BOARD")
-              }
-              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-foreground-muted hover:text-foreground"
-            >
-              {viewMode === "BOARD" ? "Histórico Completo" : "Voltar ao Board"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFocusMode(!focusMode)}
-              title="Modo Foco da Operação"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground-muted hover:text-foreground"
-            >
-              {focusMode ? (
-                <Minimize2 className="h-3.5 w-3.5 text-brand" />
-              ) : (
-                <Maximize2 className="h-3.5 w-3.5" />
-              )}
-              <span className="hidden sm:inline">Modo Foco</span>
-            </button>
-          </div>
+          <Segmented
+            name="Visualização"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "board", label: "Quadro" },
+              { value: "history", label: "Histórico" },
+            ]}
+          />
+          <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => setFocus((f) => !f)} aria-label={focus ? "Sair do modo cozinha" : "Modo cozinha (tela cheia)"}>
+            {focus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
 
-      {actionError && (
-        <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
-            <span>{actionError}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            className="text-red-300 hover:text-white"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      {view === "board" ? (
+        <>
+          {awaiting.length ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border px-4 py-3 text-sm">
+              <CreditCard className="h-4 w-4 text-foreground-subtle" />
+              <span className="text-foreground-muted">Aguardando pagamento online:</span>
+              {awaiting.map((o) => (
+                <button key={o.id} type="button" onClick={() => setSelectedId(o.id)} className="rounded-full border border-border px-2.5 py-0.5 font-mono text-xs hover:border-border-strong">
+                  #{o.order_number} · {formatCurrencyCents(o.total_cents)}
+                </button>
+              ))}
+              <span className="text-xs text-foreground-subtle">Entram no quadro quando o pagamento é aprovado.</span>
+            </div>
+          ) : null}
 
-      {/* VIEW 1: 4-Stage Operational Kanban Board */}
-      {viewMode === "BOARD" ? (
-        <div className="grid gap-4 lg:grid-cols-4">
-          {KANBAN_COLUMNS.map((col) => {
-            const colOrders = filteredOrders.filter(
-              (o) => o.status === col.status
-            );
-            return (
-              <div
-                key={col.status}
-                className="flex min-h-[540px] flex-col rounded-2xl border border-border bg-surface p-3"
-              >
-                {/* Column Header */}
-                <div className="mb-3 flex items-center justify-between border-b border-border px-2 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`h-2 w-2 rounded-full ${col.dotColor}`}
-                    />
-                    <h2 className="font-heading text-xs font-extrabold tracking-wider text-foreground">
-                      {col.title}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {BOARD_COLUMNS.map((col) => {
+              const orders = filtered.filter((o) => o.status === col.status).sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+              return (
+                <section key={col.status} aria-label={col.title} className="flex min-h-[200px] flex-col rounded-2xl border border-border bg-surface/50">
+                  <header className="flex items-center justify-between px-4 py-3.5">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold">
+                      <span className={cn("h-2 w-2 rounded-full", col.accent)} /> {col.title}
                     </h2>
+                    <span className="rounded-full bg-surface-card px-2 py-0.5 font-mono text-xs text-foreground-muted">{orders.length}</span>
+                  </header>
+                  <div className="flex flex-1 flex-col gap-2.5 px-2.5 pb-2.5">
+                    {orders.length === 0 ? <p className="py-8 text-center text-xs text-foreground-subtle">Nenhum pedido</p> : null}
+                    {orders.map((o) => (
+                      <OrderCard key={o.id} order={o} fresh={fresh.has(o.id)} pending={pending} onOpen={() => setSelectedId(o.id)} onAdvance={transition} />
+                    ))}
                   </div>
-                  <span className="rounded-md bg-surface-card px-2 py-0.5 text-xs font-bold text-foreground-muted tabular-nums">
-                    {colOrders.length}
-                  </span>
-                </div>
-
-                {/* Cards Stack */}
-                <div className="flex-1 space-y-3">
-                  {colOrders.length === 0 ? (
-                    <div className="flex h-44 items-center justify-center rounded-xl border border-dashed border-border/60 p-4 text-center text-xs text-foreground-muted">
-                      Sem pedidos
-                    </div>
-                  ) : (
-                    colOrders.map((order) => {
-                      const nextTransition = NEXT_STATUS_ACTION[order.status];
-                      const elapsed = formatElapsedMinutes(order.created_at);
-                      const isConfirmedCard = order.status === "CONFIRMED";
-
-                      return (
-                        <div
-                          key={order.id}
-                          className={`rounded-xl border p-3.5 transition-all ${
-                            isConfirmedCard
-                              ? "border-emerald-500/30 bg-surface-card"
-                              : order.status === "NEW"
-                              ? "border-brand/40 bg-surface-card"
-                              : "border-border bg-surface-card"
-                          }`}
-                        >
-                          {/* Card Top Header */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-xs font-extrabold text-brand tabular-nums">
-                                  #{order.order_number}
-                                </span>
-                                <span className="font-heading text-sm font-bold text-foreground">
-                                  {order.customer_name_snapshot}
-                                </span>
-                              </div>
-                              <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted">
-                                {FULFILLMENT_LABELS[order.fulfillment_type]}
-                                {order.table_or_reference
-                                  ? ` • ${order.table_or_reference}`
-                                  : ""}{" "}
-                                •{" "}
-                                {order.source === "DIGITAL_MENU"
-                                  ? "CARDÁPIO"
-                                  : "MANUAL"}
-                              </p>
-                            </div>
-
-                            <Badge
-                              variant="secondary"
-                              className="tabular-nums text-[10px]"
-                            >
-                              <Clock className="mr-1 h-2.5 w-2.5" />
-                              {elapsed}
-                            </Badge>
-                          </div>
-
-                          {/* Order Items Snapshot List */}
-                          <div className="mt-3 space-y-1.5 border-t border-border/70 pt-2.5 text-xs">
-                            {(order.items ?? []).map((item) => (
-                              <div key={item.id} className="text-foreground">
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="font-medium">
-                                    <strong className="text-brand tabular-nums">
-                                      {item.quantity}x
-                                    </strong>{" "}
-                                    {item.product_name_snapshot}
-                                  </span>
-                                </div>
-                                {item.options && item.options.length > 0 && (
-                                  <p className="pl-4 text-[11px] text-foreground-muted">
-                                    +{" "}
-                                    {item.options
-                                      .map((o) => o.option_name_snapshot)
-                                      .join(", ")}
-                                  </p>
-                                )}
-                                {item.notes && (
-                                  <p className="pl-4 text-[11px] italic text-amber-400">
-                                    Obs: {item.notes}
-                                  </p>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Card Footer Actions */}
-                          <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2.5">
-                            <span className="font-heading text-xs font-extrabold text-foreground tabular-nums">
-                              {formatCurrencyCents(order.total_cents)}
-                            </span>
-
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedOrder(order)}
-                                className="rounded-lg border border-border bg-surface p-1.5 text-foreground-muted hover:text-foreground"
-                                title="Ver detalhes e histórico"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </button>
-
-                              {nextTransition && (
-                                <Button
-                                  size="sm"
-                                  disabled={isPending}
-                                  onClick={() =>
-                                    handleTransitionStatus(
-                                      order.id,
-                                      nextTransition.next
-                                    )
-                                  }
-                                  className="h-7 px-2.5 text-[11px]"
-                                >
-                                  {nextTransition.label}
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </section>
+              );
+            })}
+          </div>
+        </>
       ) : (
-        /* VIEW 2: Full Order History Table (Including COMPLETED & CANCELLED) */
-        <div className="overflow-hidden rounded-xl border border-border bg-surface-card">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border bg-surface text-[11px] uppercase tracking-wider text-foreground-muted">
-                  <th className="px-4 py-3.5 font-semibold">#</th>
-                  <th className="px-4 py-3.5 font-semibold">Cliente</th>
-                  <th className="px-4 py-3.5 font-semibold">Modalidade</th>
-                  <th className="px-4 py-3.5 font-semibold">Origem</th>
-                  <th className="px-4 py-3.5 font-semibold">Estoque</th>
-                  <th className="px-4 py-3.5 font-semibold">Total</th>
-                  <th className="px-4 py-3.5 font-semibold">Status</th>
-                  <th className="px-4 py-3.5 text-right font-semibold">
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-surface/60">
-                    <td className="px-4 py-3 font-mono font-bold text-brand tabular-nums">
-                      #{order.order_number}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-foreground">
-                        {order.customer_name_snapshot}
-                      </p>
-                      <p className="text-[11px] text-foreground-muted tabular-nums">
-                        {formatPhoneBR(order.customer_phone_snapshot)}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-foreground-muted">
-                      {FULFILLMENT_LABELS[order.fulfillment_type]}
-                      {order.table_or_reference
-                        ? ` (${order.table_or_reference})`
-                        : ""}
-                    </td>
-                    <td className="px-4 py-3 text-foreground-muted">
-                      {order.source === "DIGITAL_MENU" ? "Cardápio" : "Manual"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        variant={order.stock_deducted ? "success" : "secondary"}
-                      >
-                        {order.stock_deducted ? "Deduzido" : "Não deduzido"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 font-bold text-foreground tabular-nums">
-                      {formatCurrencyCents(order.total_cents)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="default">{order.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setSelectedOrder(order)}
-                      >
-                        Detalhes
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <HistoryTable orders={filtered} onOpen={(id) => setSelectedId(id)} />
       )}
 
-      {/* Order Details & Status / Cancellation Drawer */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-sm">
-          <div className="flex h-full w-full max-w-lg flex-col border-l border-border bg-surface-card p-6 shadow-2xl overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-border pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-lg font-extrabold text-brand tabular-nums">
-                    #{selectedOrder.order_number}
-                  </span>
-                  <Badge>{selectedOrder.status}</Badge>
-                </div>
-                <p className="mt-1 text-xs text-foreground-muted">
-                  Criado em{" "}
-                  {new Date(selectedOrder.created_at).toLocaleString("pt-BR")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                className="text-foreground-muted hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Customer Card + WhatsApp Action */}
-            <div className="mt-4 rounded-xl border border-border bg-surface p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-foreground">
-                    {selectedOrder.customer_name_snapshot}
-                  </p>
-                  <p className="text-xs text-foreground-muted tabular-nums">
-                    {formatPhoneBR(selectedOrder.customer_phone_snapshot)}
-                  </p>
-                  {selectedOrder.table_or_reference && (
-                    <p className="mt-1 text-xs text-brand">
-                      {FULFILLMENT_LABELS[selectedOrder.fulfillment_type]}:{" "}
-                      {selectedOrder.table_or_reference}
-                    </p>
-                  )}
-                </div>
-
-                <Button variant="secondary" size="sm" asChild>
-                  <a
-                    href={buildWhatsAppUrl(
-                      selectedOrder.customer_phone_snapshot,
-                      `Olá ${selectedOrder.customer_name_snapshot}! Aqui é da ${storeName} sobre o seu pedido #${selectedOrder.order_number}.`
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle className="h-4 w-4 text-emerald-400" />
-                    <span>WhatsApp</span>
-                  </a>
-                </Button>
-              </div>
-            </div>
-
-            {/* Order Items Snapshot */}
-            <div className="mt-4 space-y-2">
-              <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-foreground-muted">
-                Itens do Pedido (Snapshot Histórico)
-              </h3>
-              <div className="divide-y divide-border rounded-xl border border-border bg-surface">
-                {(selectedOrder.items ?? []).map((item) => (
-                  <div key={item.id} className="p-3.5 text-xs">
-                    <div className="flex items-center justify-between font-semibold text-foreground">
-                      <span>
-                        {item.quantity}x {item.product_name_snapshot}
-                      </span>
-                      <span className="tabular-nums">
-                        {formatCurrencyCents(item.total_item_cents)}
-                      </span>
-                    </div>
-                    {item.options && item.options.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 pl-3 text-[11px] text-foreground-muted">
-                        {item.options.map((opt) => (
-                          <li key={opt.id}>
-                            + {opt.group_name_snapshot}:{" "}
-                            {opt.option_name_snapshot} (
-                            {formatCurrencyCents(opt.price_cents)})
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {item.notes && (
-                      <p className="mt-1 text-[11px] italic text-amber-400">
-                        Nota: {item.notes}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Financial Summary */}
-            <div className="mt-4 space-y-1.5 rounded-xl border border-border bg-surface p-4 text-xs">
-              <div className="flex justify-between text-foreground-muted">
-                <span>Subtotal</span>
-                <span className="tabular-nums">
-                  {formatCurrencyCents(selectedOrder.subtotal_cents)}
-                </span>
-              </div>
-              {selectedOrder.discount_cents > 0 && (
-                <div className="flex justify-between text-emerald-400">
-                  <span>Desconto</span>
-                  <span className="tabular-nums">
-                    - {formatCurrencyCents(selectedOrder.discount_cents)}
-                  </span>
-                </div>
-              )}
-              {selectedOrder.fee_cents > 0 && (
-                <div className="flex justify-between text-foreground-muted">
-                  <span>Taxa de Entrega / Serviço</span>
-                  <span className="tabular-nums">
-                    + {formatCurrencyCents(selectedOrder.fee_cents)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between border-t border-border pt-2 font-heading text-sm font-extrabold text-foreground">
-                <span>Total</span>
-                <span className="text-brand tabular-nums">
-                  {formatCurrencyCents(selectedOrder.total_cents)}
-                </span>
-              </div>
-            </div>
-
-            {/* Status Controls */}
-            {selectedOrder.status !== "CANCELLED" &&
-              selectedOrder.status !== "COMPLETED" && (
-                <div className="mt-6 space-y-3 border-t border-border pt-4">
-                  <p className="text-xs font-semibold text-foreground">
-                    Alterar Estágio do Pedido
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(
-                      [
-                        { status: "CONFIRMED", label: "Confirmar (Baixa Estoque)" },
-                        { status: "PREPARING", label: "Em Preparo" },
-                        { status: "READY", label: "Pronto" },
-                        { status: "COMPLETED", label: "Concluir Pedido" },
-                      ] as const
-                    ).map((btn) => (
-                      <Button
-                        key={btn.status}
-                        variant={
-                          selectedOrder.status === btn.status
-                            ? "default"
-                            : "secondary"
-                        }
-                        size="sm"
-                        disabled={
-                          isPending || selectedOrder.status === btn.status
-                        }
-                        onClick={() =>
-                          handleTransitionStatus(selectedOrder.id, btn.status)
-                        }
-                      >
-                        {btn.label}
-                      </Button>
-                    ))}
-                  </div>
-
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="w-full"
-                    disabled={isPending}
-                    onClick={() => {
-                      if (
-                        confirm(
-                          "Deseja cancelar este pedido? Se o estoque já tiver sido baixado, ele será estornado automaticamente."
-                        )
-                      ) {
-                        handleTransitionStatus(
-                          selectedOrder.id,
-                          "CANCELLED",
-                          "Cancelado pelo operador no painel"
-                        );
-                      }
-                    }}
-                  >
-                    Cancelar Pedido (Estorna Estoque se Confirmado)
-                  </Button>
-                </div>
-              )}
-
-            {/* Status History Timeline */}
-            {selectedOrder.status_history &&
-              selectedOrder.status_history.length > 0 && (
-                <div className="mt-6 border-t border-border pt-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-foreground-muted">
-                    Histórico de Status
-                  </h4>
-                  <div className="mt-3 space-y-2">
-                    {selectedOrder.status_history.map((h) => (
-                      <div
-                        key={h.id}
-                        className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-[11px]"
-                      >
-                        <div>
-                          <span className="font-semibold text-foreground">
-                            {h.from_status ? `${h.from_status} → ` : ""}
-                            {h.to_status}
-                          </span>
-                          {h.reason && (
-                            <p className="text-foreground-muted">{h.reason}</p>
-                          )}
-                        </div>
-                        <span className="text-foreground-muted tabular-nums">
-                          {new Date(h.created_at).toLocaleTimeString("pt-BR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-          </div>
-        </div>
-      )}
-
-      {/* Manual Order Registration Modal */}
-      {manualModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">
-          <div className="my-8 w-full max-w-2xl rounded-2xl border border-border bg-surface-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-border pb-4">
-              <div>
-                <h2 className="font-heading text-lg font-bold text-foreground">
-                  Registrar Pedido Manual (Balcão / Mesa / Telefone)
-                </h2>
-                <p className="text-xs text-foreground-muted">
-                  O preço é calculado automaticamente pelo servidor a partir do
-                  catálogo atual.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setManualModalOpen(false)}
-                className="text-foreground-muted hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateManualOrder} className="mt-4 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Nome do Cliente
-                  </label>
-                  <Input
-                    value={manualCustomerName}
-                    onChange={(e) => setManualCustomerName(e.target.value)}
-                    placeholder="Ex: Clarissa Mendes"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    WhatsApp / Telefone
-                  </label>
-                  <Input
-                    value={manualCustomerPhone}
-                    onChange={(e) => setManualCustomerPhone(e.target.value)}
-                    placeholder="(11) 99999-9999"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Modalidade
-                  </label>
-                  <select
-                    value={manualFulfillment}
-                    onChange={(e) =>
-                      setManualFulfillment(e.target.value as FulfillmentType)
-                    }
-                    className="flex h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  >
-                    <option value="DINE_IN">Mesa / Salão</option>
-                    <option value="PICKUP">Retirada no Balcão</option>
-                    <option value="DELIVERY">Delivery</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Mesa ou Referência
-                  </label>
-                  <Input
-                    value={manualTableRef}
-                    onChange={(e) => setManualTableRef(e.target.value)}
-                    placeholder="Ex: MESA 5"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Status Inicial
-                  </label>
-                  <select
-                    value={manualInitialStatus}
-                    onChange={(e) =>
-                      setManualInitialStatus(
-                        e.target.value as "CONFIRMED" | "NEW"
-                      )
-                    }
-                    className="flex h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  >
-                    <option value="CONFIRMED">
-                      Confirmado (Deduz Estoque)
-                    </option>
-                    <option value="NEW">Novo (Aguardar Confirmação)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Order Lines */}
-              <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground">
-                    Itens do Pedido
-                  </span>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      setManualLines((prev) => [
-                        ...prev,
-                        {
-                          productId: products[0]?.id ?? "",
-                          quantity: 1,
-                          notes: "",
-                        },
-                      ])
-                    }
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Adicionar Item</span>
-                  </Button>
-                </div>
-
-                {manualLines.map((line, idx) => (
-                  <div
-                    key={idx}
-                    className="grid gap-2 sm:grid-cols-12 items-center"
-                  >
-                    <select
-                      value={line.productId}
-                      onChange={(e) => {
-                        const next = [...manualLines];
-                        next[idx].productId = e.target.value;
-                        setManualLines(next);
-                      }}
-                      className="h-9 rounded-lg border border-border bg-surface-card px-2.5 text-xs text-foreground sm:col-span-6"
-                    >
-                      <option value="">Selecione um produto...</option>
-                      {products.map((p) => (
-                        <option
-                          key={p.id}
-                          value={p.id}
-                          disabled={
-                            !p.is_available ||
-                            (p.track_stock && p.stock_quantity === 0)
-                          }
-                        >
-                          {p.name} — {formatCurrencyCents(p.price_cents)} (Est:{" "}
-                          {p.track_stock ? p.stock_quantity : "Livre"})
-                        </option>
-                      ))}
-                    </select>
-
-                    <Input
-                      type="number"
-                      min={1}
-                      value={line.quantity}
-                      onChange={(e) => {
-                        const next = [...manualLines];
-                        next[idx].quantity = Number(e.target.value);
-                        setManualLines(next);
-                      }}
-                      className="h-9 text-xs tabular-nums sm:col-span-2"
-                    />
-
-                    <Input
-                      value={line.notes}
-                      onChange={(e) => {
-                        const next = [...manualLines];
-                        next[idx].notes = e.target.value;
-                        setManualLines(next);
-                      }}
-                      placeholder="Observação"
-                      className="h-9 text-xs sm:col-span-3"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setManualLines(manualLines.filter((_, i) => i !== idx))
-                      }
-                      className="justify-self-end text-foreground-muted hover:text-red-400 sm:col-span-1"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Desconto (R$)
-                  </label>
-                  <Input
-                    value={manualDiscountStr}
-                    onChange={(e) => setManualDiscountStr(e.target.value)}
-                    className="tabular-nums"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-foreground">
-                    Taxa de Entrega / Serviço (R$)
-                  </label>
-                  <Input
-                    value={manualFeeStr}
-                    onChange={(e) => setManualFeeStr(e.target.value)}
-                    className="tabular-nums"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setManualModalOpen(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={isPending}>
-                  {isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>Lançar Pedido</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <OrderDetailSheet order={selected} storeName={storeName} onClose={() => setSelectedId(null)} onTransition={transition} pending={pending} />
+      <ManualOrderDialog open={manualOpen} onOpenChange={setManualOpen} storeId={storeId} products={products} onCreated={() => router.refresh()} />
     </div>
   );
 }
 
+function OrderCard({ order, fresh, pending, onOpen, onAdvance }: { order: Order; fresh: boolean; pending: boolean; onOpen: () => void; onAdvance: (o: Order, s: OrderStatus) => void }) {
+  const mins = minutesSince(order.created_at);
+  const late = mins >= 15 && order.status !== "READY";
+  const next = NEXT_ACTION[order.status];
+  const notes = order.notes || order.items?.some((i) => i.notes);
+  return (
+    <article
+      className={cn(
+        "group rounded-xl border bg-surface-elevated/70 p-3.5 shadow-raised transition-colors duration-base hover:border-border-strong",
+        fresh ? "animate-order-arrive border-brand/60" : late ? "border-warning/40" : "border-white/[0.06]"
+      )}
+    >
+      <button type="button" onClick={onOpen} className="block w-full text-left">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-xs text-foreground-muted">
+            #{order.order_number} · {FULFILLMENT_LABEL[order.fulfillment_type]}
+            {order.table_or_reference ? ` ${order.table_or_reference}` : ""}
+          </span>
+          <span className={cn("inline-flex items-center gap-1 font-mono text-xs", late ? "text-warning" : "text-foreground-subtle")}>
+            {late ? <Timer className="h-3 w-3" /> : <Clock className="h-3 w-3" />} {elapsedLabel(order.created_at)}
+          </span>
+        </div>
+        <p className="mt-1.5 truncate font-medium">{order.customer_name_snapshot}</p>
+        <ul className="mt-2 space-y-0.5 text-[13px] text-foreground-muted">
+          {order.items?.slice(0, 4).map((i) => (
+            <li key={i.id} className="truncate">
+              <span className="font-mono text-foreground">{i.quantity}×</span> {i.product_name_snapshot}
+              {i.options?.length ? <span className="text-foreground-subtle"> · {i.options.map((x) => x.option_name_snapshot).join(", ")}</span> : null}
+            </li>
+          ))}
+          {(order.items?.length ?? 0) > 4 ? <li className="text-xs text-foreground-subtle">+{(order.items?.length ?? 0) - 4} itens</li> : null}
+        </ul>
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className="flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5",
+                order.payment_status === "APPROVED" ? "bg-success/15 text-success" : "bg-surface-card text-foreground-muted"
+              )}
+            >
+              {order.payment_status === "APPROVED" ? "Pago" : PAYMENT_STATUS_LABEL[order.payment_status]}
+            </span>
+            {notes ? <MessageSquareText className="h-3.5 w-3.5 text-warning" aria-label="Tem observações" /> : null}
+          </span>
+          <span className="font-mono font-medium">{formatCurrencyCents(order.total_cents)}</span>
+        </div>
+      </button>
+      {next ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => onAdvance(order, next.next)}
+          className="mt-3 h-9 w-full rounded-lg border border-white/[0.08] bg-background/40 text-sm font-medium transition-colors hover:border-brand/50 hover:bg-brand hover:text-white disabled:opacity-50"
+        >
+          {next.label}
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
+function HistoryTable({ orders, onOpen }: { orders: Order[]; onOpen: (id: string) => void }) {
+  if (!orders.length) return <EmptyState title="Nenhum pedido encontrado" description="Ajuste os filtros ou a busca." />;
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-border">
+      <table className="w-full min-w-[720px] text-sm">
+        <thead className="bg-surface text-left text-xs text-foreground-muted">
+          <tr>
+            {["Pedido", "Cliente", "Atendimento", "Status", "Pagamento", "Total", "Quando"].map((h) => (
+              <th key={h} className="px-4 py-3 font-medium">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {orders.map((o) => (
+            <tr key={o.id} onClick={() => onOpen(o.id)} className="cursor-pointer transition-colors hover:bg-surface-card/60">
+              <td className="px-4 py-3 font-mono">#{o.order_number}</td>
+              <td className="px-4 py-3">{o.customer_name_snapshot}</td>
+              <td className="px-4 py-3 text-foreground-muted">{FULFILLMENT_LABEL[o.fulfillment_type]}</td>
+              <td className="px-4 py-3">{ORDER_STATUS_LABEL[o.status]}</td>
+              <td className="px-4 py-3 text-foreground-muted">{PAYMENT_STATUS_LABEL[o.payment_status]}</td>
+              <td className="px-4 py-3 font-mono">{formatCurrencyCents(o.total_cents)}</td>
+              <td className="px-4 py-3 text-foreground-muted">{new Date(o.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

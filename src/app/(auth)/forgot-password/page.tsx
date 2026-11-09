@@ -2,111 +2,55 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
-import { BenitLogo } from "@/components/layout/benit-logo";
+import { Loader2, MailCheck } from "lucide-react";
+import { AuthError, AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { forgotPasswordAction } from "@/features/auth/actions";
 
 export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [pending, start] = useTransition();
 
-  function handleSubmit(formData: FormData) {
+  function submit(formData: FormData) {
     setError(null);
-    startTransition(async () => {
+    start(async () => {
       const res = await forgotPasswordAction(formData);
-      if (res && !res.success) {
-        setError(res.error ?? "Erro ao solicitar recuperação.");
-      } else {
-        setSent(true);
-      }
+      if (res && !res.success) setError(res.error ?? "Não foi possível enviar o e-mail.");
+      else setSent(true);
     });
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <BenitLogo href="/" showTagline />
+    <AuthShell
+      title="Recuperar acesso."
+      subtitle="Informe o e-mail da sua conta e enviaremos um link para criar uma nova senha."
+      footer={
+        <Link href="/login" className="font-medium text-foreground underline decoration-brand underline-offset-4">
+          Voltar para o login
+        </Link>
+      }
+    >
+      {sent ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 p-5 text-sm text-success">
+          <MailCheck className="h-5 w-5 shrink-0" /> Se houver uma conta com esse e-mail, o link chega em instantes.
         </div>
-
-        <div className="rounded-2xl border border-border bg-surface-card p-6 shadow-xl sm:p-8">
-          <div className="mb-6">
-            <h1 className="font-heading text-xl font-bold text-foreground">
-              Recuperar senha
-            </h1>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Informe seu e-mail cadastrado para receber as instruções de
-              redefinição.
-            </p>
-          </div>
-
-          {error && (
-            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-              <span>{error}</span>
+      ) : (
+        <>
+          <AuthError message={error} />
+          <form action={submit} className="space-y-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="email">E-mail</Label>
+              <Input id="email" name="email" type="email" required autoComplete="email" className="h-11" />
             </div>
-          )}
-
-          {sent ? (
-            <div className="space-y-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-300">
-              <div className="flex items-center gap-2 font-semibold text-emerald-400">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>E-mail enviado!</span>
-              </div>
-              <p className="leading-relaxed">
-                Se houver uma conta associada a este endereço, você receberá um
-                link seguro para redefinir sua senha em instantes.
-              </p>
-              <Button variant="secondary" asChild className="w-full">
-                <Link href="/login">Voltar para o Login</Link>
-              </Button>
-            </div>
-          ) : (
-            <form action={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="email"
-                  className="block text-xs font-medium text-foreground"
-                >
-                  E-mail cadastrado
-                </label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="voce@sua-loja.com.br"
-                  required
-                />
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isPending}>
-                {isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Enviando...</span>
-                  </>
-                ) : (
-                  <span>Enviar Link de Recuperação</span>
-                )}
-              </Button>
-            </form>
-          )}
-
-          <div className="mt-6 border-t border-border pt-5 text-center">
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground-muted hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Voltar ao login</span>
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
+            <Button type="submit" size="lg" className="w-full" disabled={pending}>
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Enviar link
+            </Button>
+          </form>
+        </>
+      )}
+    </AuthShell>
   );
 }
-

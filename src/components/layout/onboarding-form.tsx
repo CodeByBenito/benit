@@ -34,8 +34,8 @@ export function OnboardingForm() {
   return (
     <form action={handleSubmit} className="space-y-5">
       {error && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+        <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -44,9 +44,9 @@ export function OnboardingForm() {
         <div className="space-y-1.5">
           <label
             htmlFor="organizationName"
-            className="block text-xs font-medium text-foreground"
+            className="block text-xs font-medium tracking-wide text-foreground-muted"
           >
-            Nome da Empresa / Grupo
+            Empresa ou grupo
           </label>
           <Input
             id="organizationName"
@@ -59,9 +59,9 @@ export function OnboardingForm() {
         <div className="space-y-1.5">
           <label
             htmlFor="storeName"
-            className="block text-xs font-medium text-foreground"
+            className="block text-xs font-medium tracking-wide text-foreground-muted"
           >
-            Nome do Estabelecimento (Loja)
+            Nome da loja
           </label>
           <Input
             id="storeName"
@@ -77,12 +77,12 @@ export function OnboardingForm() {
       <div className="space-y-1.5">
         <label
           htmlFor="storeSlug"
-          className="block text-xs font-medium text-foreground"
+          className="block text-xs font-medium tracking-wide text-foreground-muted"
         >
-          Link Público do Cardápio Digital
+          Link do cardápio
         </label>
-        <div className="flex items-center rounded-lg border border-border bg-surface focus-within:ring-2 focus-within:ring-brand/60">
-          <span className="select-none border-r border-border px-3 py-2 text-xs text-foreground-muted">
+        <div className="flex items-center rounded-lg border border-border bg-surface transition-colors focus-within:border-brand/60 focus-within:ring-2 focus-within:ring-brand/25">
+          <span className="select-none border-r border-border px-3 py-2 font-mono text-xs text-foreground-subtle">
             /menu/
           </span>
           <input
@@ -98,7 +98,7 @@ export function OnboardingForm() {
             className="h-10 flex-1 bg-transparent px-3 text-sm text-foreground focus:outline-none"
           />
         </div>
-        <p className="text-[11px] text-foreground-muted">
+        <p className="text-xs text-foreground-subtle">
           Seus clientes acessarão seu cardápio através de{" "}
           <span className="font-mono text-brand">
             /menu/{storeSlug || "sua-loja"}
@@ -110,9 +110,9 @@ export function OnboardingForm() {
         <div className="space-y-1.5">
           <label
             htmlFor="phone"
-            className="block text-xs font-medium text-foreground"
+            className="block text-xs font-medium tracking-wide text-foreground-muted"
           >
-            WhatsApp de Atendimento
+            WhatsApp da loja
           </label>
           <Input
             id="phone"
@@ -126,9 +126,9 @@ export function OnboardingForm() {
         <div className="space-y-1.5">
           <label
             htmlFor="address"
-            className="block text-xs font-medium text-foreground"
+            className="block text-xs font-medium tracking-wide text-foreground-muted"
           >
-            Endereço / Bairro (opcional)
+            Endereço (opcional)
           </label>
           <Input
             id="address"
@@ -141,9 +141,9 @@ export function OnboardingForm() {
       <div className="space-y-1.5">
         <label
           htmlFor="description"
-          className="block text-xs font-medium text-foreground"
+          className="block text-xs font-medium tracking-wide text-foreground-muted"
         >
-          Descrição curta da loja (exibida no cardápio)
+          Uma frase sobre a loja (aparece no cardápio)
         </label>
         <Input
           id="description"
@@ -156,12 +156,12 @@ export function OnboardingForm() {
         {isPending ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Criando ambiente da loja...</span>
+            <span>Criando sua loja…</span>
           </>
         ) : (
           <>
             <Store className="h-4 w-4" />
-            <span>Concluir Configuração e Acessar Painel</span>
+            <span>Criar minha loja</span>
             <ArrowRight className="h-4 w-4" />
           </>
         )}

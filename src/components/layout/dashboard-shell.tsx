@@ -2,27 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useTransition } from "react";
-import {
-  LayoutDashboard,
-  ClipboardList,
-  UtensilsCrossed,
-  Boxes,
-  Users,
-  Settings,
-  ExternalLink,
-  LogOut,
-  Power,
-  Menu,
-  X,
-  Store as StoreIcon,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useEffect, useState, useTransition } from "react";
+import { ArrowUpRight, Boxes, ClipboardList, LayoutDashboard, LogOut, Menu, Settings, UtensilsCrossed, Users, X } from "lucide-react";
 import { BenitLogo } from "@/components/layout/benit-logo";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { toast } from "@/components/ui/toast";
 import { logoutAction } from "@/features/auth/actions";
 import { toggleStoreOpenStatusAction } from "@/features/stores/actions";
+import { cn } from "@/lib/utils";
 import type { TenantContext } from "@/types/domain.types";
 
 interface DashboardShellProps {
@@ -32,325 +18,174 @@ interface DashboardShellProps {
   children: React.ReactNode;
 }
 
-export function DashboardShell({
-  tenant,
-  newOrdersCount = 0,
-  lowStockCount = 0,
-  children,
-}: DashboardShellProps) {
-  const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
-  const [isOpenState, setIsOpenState] = useState(tenant.store.is_open);
+const ROLE_LABEL = { OWNER: "Proprietário", MANAGER: "Gerente", ATTENDANT: "Atendente", KITCHEN: "Cozinha" } as const;
 
-  const navItems = [
-    {
-      label: "Dashboard",
-      href: "/dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      label: "Pedidos",
-      href: "/orders",
-      icon: ClipboardList,
-      badge: newOrdersCount > 0 ? newOrdersCount : undefined,
-      badgeVariant: "default" as const,
-    },
-    {
-      label: "Cardápio",
-      href: "/menu-manager",
-      icon: UtensilsCrossed,
-    },
-    {
-      label: "Estoque",
-      href: "/inventory",
-      icon: Boxes,
-      badge: lowStockCount > 0 ? lowStockCount : undefined,
-      badgeVariant: "warning" as const,
-    },
-    {
-      label: "Clientes",
-      href: "/customers",
-      icon: Users,
-    },
-    {
-      label: "Configurações",
-      href: "/settings",
-      icon: Settings,
-    },
+export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, children }: DashboardShellProps) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [isOpen, setIsOpen] = useState(tenant.store.is_open);
+
+  useEffect(() => setMobileOpen(false), [pathname]);
+
+  const nav = [
+    { label: "Visão geral", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Pedidos", href: "/orders", icon: ClipboardList, badge: newOrdersCount || undefined, tone: "brand" as const },
+    { label: "Cardápio", href: "/menu-manager", icon: UtensilsCrossed },
+    { label: "Estoque", href: "/inventory", icon: Boxes, badge: lowStockCount || undefined, tone: "warning" as const },
+    { label: "Clientes", href: "/customers", icon: Users },
+    { label: "Configurações", href: "/settings", icon: Settings },
   ];
 
-  function handleToggleStoreOpen() {
-    const nextValue = !isOpenState;
-    setIsOpenState(nextValue);
+  function toggleOpen() {
+    const next = !isOpen;
+    setIsOpen(next);
     startTransition(async () => {
-      const res = await toggleStoreOpenStatusAction(tenant.store.id, nextValue);
+      const res = await toggleStoreOpenStatusAction(tenant.store.id, next);
       if (!res.success) {
-        setIsOpenState(!nextValue);
-      }
+        setIsOpen(!next);
+        toast.error("Não foi possível alterar o status da loja.");
+      } else toast.success(next ? "Loja aberta para pedidos." : "Loja pausada. Novos pedidos bloqueados.");
     });
   }
 
-  return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      {/* Desktop Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
-        <div className="flex h-16 items-center justify-between border-b border-border px-5">
-          <BenitLogo href="/dashboard" />
-          <Badge variant="secondary" className="text-[10px] uppercase">
-            SaaS
-          </Badge>
-        </div>
+  const sidebar = (
+    <div className="flex h-full flex-col">
+      <div className="flex h-16 items-center px-5">
+        <BenitLogo href="/dashboard" />
+      </div>
 
-        {/* Active Store Card */}
-        <div className="border-b border-border p-4">
-          <div className="rounded-xl border border-border bg-surface-card p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand">
-                  <StoreIcon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-foreground">
-                    {tenant.store.name}
-                  </p>
-                  <p className="truncate text-[11px] text-foreground-muted">
-                    /menu/{tenant.store.slug}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleToggleStoreOpen}
-                disabled={isPending}
-                title={
-                  isOpenState
-                    ? "Clique para pausar novos pedidos digitais"
-                    : "Clique para abrir a loja para pedidos"
-                }
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors",
-                  isOpenState
-                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                    : "bg-red-500/15 text-red-400 border border-red-500/30"
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    isOpenState ? "bg-emerald-400" : "bg-red-400"
-                  )}
-                />
-                {isOpenState ? "Aberta" : "Fechada"}
-              </button>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <Link
-                href={`/menu/${tenant.store.slug}`}
-                target="_blank"
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground-muted transition-colors hover:border-brand/40 hover:text-foreground"
-              >
-                <span>Ver Cardápio Digital</span>
-                <ExternalLink className="h-3 w-3" />
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Links */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted/70">
-            Operação
-          </p>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "group flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-brand/15 text-brand border border-brand/30"
-                    : "text-foreground-muted hover:bg-surface-card hover:text-foreground border border-transparent"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon
-                    className={cn(
-                      "h-4 w-4 transition-colors",
-                      isActive
-                        ? "text-brand"
-                        : "text-foreground-muted group-hover:text-foreground"
-                    )}
-                  />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge !== undefined && (
-                  <Badge
-                    variant={item.badgeVariant}
-                    className="tabular-nums px-2 py-0 text-[11px]"
-                  >
-                    {item.badge}
-                  </Badge>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User Footer */}
-        <div className="border-t border-border p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-foreground">
-                {tenant.user.full_name}
-              </p>
-              <p className="truncate text-[11px] text-foreground-muted">
-                {tenant.user.email}
-              </p>
-            </div>
-            <form action={logoutAction}>
-              <Button
-                type="submit"
-                variant="ghost"
-                size="icon"
-                title="Sair da conta"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </form>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Topbar (Mobile & Quick Operational Actions) */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur lg:px-8">
+      <div className="px-3">
+        <div className="rounded-2xl border border-border bg-surface-card/60 p-3">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-foreground lg:hidden"
-              aria-label="Abrir menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="lg:hidden">
-              <BenitLogo href="/dashboard" />
-            </div>
-            <div className="hidden items-center gap-2 text-xs text-foreground-muted lg:flex">
-              <span>Organização:</span>
-              <span className="font-medium text-foreground">
-                {tenant.organization.name}
+            {tenant.store.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={tenant.store.logo_url} alt="" className="h-9 w-9 rounded-xl object-cover" />
+            ) : (
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand font-display font-extrabold text-white">
+                {tenant.store.name.charAt(0)}
               </span>
-              <span className="text-border">/</span>
-              <span className="font-medium text-brand">
-                {tenant.store.name}
-              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{tenant.store.name}</p>
+              <p className="truncate font-mono text-[11px] text-foreground-subtle">/menu/{tenant.store.slug}</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={toggleOpen}
+            disabled={pending}
+            aria-pressed={isOpen}
+            className={cn(
+              "mt-3 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-medium transition-colors duration-base",
+              isOpen ? "border-success/30 bg-success/10 text-success" : "border-danger/30 bg-danger/10 text-danger"
+            )}
+          >
+            <span className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                {isOpen ? <span className="absolute inline-flex h-full w-full animate-ring rounded-full bg-success" /> : null}
+                <span className={cn("relative inline-flex h-2 w-2 rounded-full", isOpen ? "bg-success" : "bg-danger")} />
+              </span>
+              {isOpen ? "Recebendo pedidos" : "Loja pausada"}
+            </span>
+            <span className="text-[10px] uppercase tracking-wider opacity-70">{isOpen ? "Pausar" : "Abrir"}</span>
+          </button>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleToggleStoreOpen}
-              disabled={isPending}
+      <nav aria-label="Painel" className="mt-6 flex-1 space-y-0.5 px-3">
+        {nav.map((item) => {
+          const Icon = item.icon;
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                isOpenState
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                  : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                "group relative flex items-center justify-between rounded-xl px-3 py-2.5 text-sm transition-colors duration-fast",
+                active ? "bg-surface-elevated font-medium text-foreground shadow-hairline" : "text-foreground-muted hover:bg-surface-card hover:text-foreground"
               )}
             >
-              <Power className="h-3.5 w-3.5" />
-              <span>{isOpenState ? "Loja Aberta" : "Loja Fechada"}</span>
-            </button>
-
-            <Link
-              href={`/menu/${tenant.store.slug}`}
-              target="_blank"
-              className="hidden items-center gap-1.5 rounded-lg border border-border bg-surface-card px-3 py-1.5 text-xs font-medium text-foreground hover:border-brand/50 sm:inline-flex"
-            >
-              <span>Cardápio Público</span>
-              <ExternalLink className="h-3.5 w-3.5 text-brand" />
-            </Link>
-          </div>
-        </header>
-
-        {/* Mobile Drawer */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 flex lg:hidden">
-            <div
-              className="fixed inset-0 bg-black/75 backdrop-blur-sm"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            <div className="relative z-10 flex w-72 flex-col border-r border-border bg-surface">
-              <div className="flex h-16 items-center justify-between border-b border-border px-5">
-                <BenitLogo href="/dashboard" />
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-lg p-1.5 text-foreground-muted hover:text-foreground"
+              {active ? <span aria-hidden className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand" /> : null}
+              <span className="flex items-center gap-3">
+                <Icon className={cn("h-[18px] w-[18px]", active ? "text-brand" : "text-foreground-subtle group-hover:text-foreground-muted")} />
+                {item.label}
+              </span>
+              {item.badge ? (
+                <span
+                  className={cn(
+                    "min-w-[22px] rounded-full px-1.5 py-0.5 text-center font-mono text-[11px] font-medium",
+                    item.tone === "brand" ? "bg-brand text-white" : "bg-warning/15 text-warning"
+                  )}
                 >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <nav className="flex-1 space-y-1 p-4">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive =
-                    pathname === item.href ||
-                    pathname.startsWith(`${item.href}/`);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={cn(
-                        "flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium",
-                        isActive
-                          ? "bg-brand/15 text-brand border border-brand/30"
-                          : "text-foreground-muted hover:bg-surface-card hover:text-foreground"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Icon className="h-4 w-4" />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.badge !== undefined && (
-                        <Badge variant={item.badgeVariant} className="tabular-nums">
-                          {item.badge}
-                        </Badge>
-                      )}
-                    </Link>
-                  );
-                })}
-              </nav>
-              <div className="border-t border-border p-4">
-                <form action={logoutAction}>
-                  <Button
-                    type="submit"
-                    variant="secondary"
-                    className="w-full justify-center"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>Sair da conta</span>
-                  </Button>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
+                  {item.badge}
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </nav>
 
-        {/* Page Content */}
-        <main className="flex-1 p-4 lg:p-8">{children}</main>
+      <div className="space-y-3 p-3">
+        <a
+          href={`/menu/${tenant.store.slug}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5 text-sm text-foreground-muted transition-colors hover:border-border-strong hover:text-foreground"
+        >
+          Ver cardápio público <ArrowUpRight className="h-4 w-4" />
+        </a>
+        <div className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{tenant.user.full_name}</p>
+            <p className="truncate text-[11px] text-foreground-subtle">{ROLE_LABEL[tenant.membership.role]} · {tenant.organization.name}</p>
+          </div>
+          <form action={logoutAction}>
+            <button type="submit" aria-label="Sair da conta" className="rounded-lg p-2 text-foreground-subtle transition-colors hover:bg-surface-card hover:text-foreground">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-screen bg-background text-foreground">
+      <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 border-r border-border bg-surface/60 lg:block">{sidebar}</aside>
+
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="absolute inset-0 animate-overlay-in bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <div className="absolute inset-y-0 left-0 w-[284px] animate-slide-in-left border-r border-border bg-surface">
+            <button type="button" onClick={() => setMobileOpen(false)} aria-label="Fechar menu" className="absolute right-3 top-4 rounded-lg p-1.5 text-foreground-muted hover:text-foreground">
+              <X className="h-5 w-5" />
+            </button>
+            {sidebar}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-xl lg:hidden">
+          <button type="button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu" className="flex h-9 w-9 items-center justify-center rounded-lg border border-border">
+            <Menu className="h-5 w-5" />
+          </button>
+          <BenitLogo href="/dashboard" />
+          <button
+            type="button"
+            onClick={toggleOpen}
+            disabled={pending}
+            aria-label={isOpen ? "Pausar loja" : "Abrir loja"}
+            className={cn("flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium", isOpen ? "border-success/30 text-success" : "border-danger/30 text-danger")}
+          >
+            <span className={cn("h-2 w-2 rounded-full", isOpen ? "bg-success" : "bg-danger")} />
+            {isOpen ? "Aberta" : "Pausada"}
+          </button>
+        </header>
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">{children}</main>
       </div>
     </div>
   );
 }
-

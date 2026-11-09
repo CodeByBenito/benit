@@ -272,7 +272,7 @@ export function MenuManagerClient({
       {/* Page Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground">
+          <h1 className="font-display text-display-sm font-extrabold sm:text-3xl">
             Gestão de Produtos & Cardápio
           </h1>
           <p className="text-xs text-foreground-muted">
@@ -298,7 +298,7 @@ export function MenuManagerClient({
       </div>
 
       {/* Category Chips Strip */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-card p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3">
         <button
           type="button"
           onClick={() => setSelectedCategoryId("ALL")}
@@ -340,7 +340,7 @@ export function MenuManagerClient({
                     });
                   }
                 }}
-                className="ml-1 text-foreground-muted/60 hover:text-red-400"
+                className="ml-1 text-foreground-muted/60 hover:text-danger"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -350,7 +350,7 @@ export function MenuManagerClient({
       </div>
 
       {/* Filters & Search Bar */}
-      <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface-card p-4 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-foreground-muted" />
           <Input
@@ -386,11 +386,11 @@ export function MenuManagerClient({
       </div>
 
       {/* Products Management Table (ShopPoint reference style) */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         {filteredProducts.length === 0 ? (
           <div className="p-12 text-center">
             <ImageIcon className="mx-auto h-10 w-10 text-foreground-muted" />
-            <h3 className="mt-3 font-heading text-base font-bold text-foreground">
+            <h3 className="mt-3 font-display text-base font-bold text-foreground">
               Nenhum produto encontrado
             </h3>
             <p className="mx-auto mt-1 max-w-md text-xs text-foreground-muted">
@@ -472,20 +472,20 @@ export function MenuManagerClient({
                         {!product.track_stock ? (
                           <span className="text-foreground-muted">Livre</span>
                         ) : isOut ? (
-                          <span className="font-semibold text-red-400">
+                          <span className="font-semibold text-danger">
                             Esgotado (0)
                           </span>
                         ) : isLow ? (
-                          <span className="font-semibold text-amber-400">
+                          <span className="font-semibold text-warning">
                             Baixo ({product.stock_quantity} un.)
                           </span>
                         ) : (
-                          <span className="font-medium text-emerald-400">
+                          <span className="font-medium text-success">
                             Em estoque ({product.stock_quantity} un.)
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3.5 font-heading font-bold text-foreground tabular-nums">
+                      <td className="px-4 py-3.5 font-display font-bold text-foreground tabular-nums">
                         {formatCurrencyCents(product.price_cents)}
                       </td>
                       <td className="px-4 py-3.5">
@@ -523,7 +523,7 @@ export function MenuManagerClient({
                             size="icon"
                             onClick={() => handleDeleteProduct(product)}
                             title="Arquivar/Remover produto"
-                            className="hover:text-red-400"
+                            className="hover:text-danger"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -543,7 +543,7 @@ export function MenuManagerClient({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-border bg-surface-card p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-4">
-              <h2 className="font-heading text-lg font-bold text-foreground">
+              <h2 className="font-display text-lg font-bold text-foreground">
                 Nova Categoria do Cardápio
               </h2>
               <button
@@ -557,7 +557,7 @@ export function MenuManagerClient({
 
             <form onSubmit={handleSaveCategory} className="mt-4 space-y-4">
               {error && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -624,7 +624,7 @@ export function MenuManagerClient({
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">
           <div className="my-8 w-full max-w-2xl rounded-2xl border border-border bg-surface-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-border pb-4">
-              <h2 className="font-heading text-lg font-bold text-foreground">
+              <h2 className="font-display text-lg font-bold text-foreground">
                 {editingProduct ? "Editar Produto" : "Novo Produto"}
               </h2>
               <button
@@ -638,7 +638,7 @@ export function MenuManagerClient({
 
             <form onSubmit={handleSaveProduct} className="mt-4 space-y-5">
               {error && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -874,7 +874,7 @@ export function MenuManagerClient({
                             optionGroups.filter((_, i) => i !== gIdx)
                           )
                         }
-                        className="text-foreground-muted hover:text-red-400"
+                        className="text-foreground-muted hover:text-danger"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -913,7 +913,7 @@ export function MenuManagerClient({
                               );
                               setOptionGroups(next);
                             }}
-                            className="text-foreground-muted hover:text-red-400"
+                            className="text-foreground-muted hover:text-danger"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>

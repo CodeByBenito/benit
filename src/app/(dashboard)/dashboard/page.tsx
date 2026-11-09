@@ -1,465 +1,245 @@
 import Link from "next/link";
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Boxes,
-  CheckCircle2,
-  ClipboardList,
-  Clock,
-  DollarSign,
-  Plus,
-  ShoppingBag,
-  UtensilsCrossed,
-} from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, Plus } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
+import { getPaymentAccountStatus } from "@/features/payments/actions";
+import { FULFILLMENT_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { requireTenantContext } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrencyCents, formatElapsedMinutes } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { cn, formatCurrencyCents } from "@/lib/utils";
 import type { Order, Product } from "@/types/domain.types";
 
-const STATUS_LABELS: Record<string, { label: string; variant: "default" | "warning" | "info" | "success" | "danger" | "secondary" }> = {
-  NEW: { label: "Novo", variant: "default" },
-  CONFIRMED: { label: "Confirmado", variant: "info" },
-  PREPARING: { label: "Em preparo", variant: "warning" },
-  READY: { label: "Pronto", variant: "success" },
-  COMPLETED: { label: "Concluído", variant: "secondary" },
-  CANCELLED: { label: "Cancelado", variant: "danger" },
-};
+const COUNTS_AS_SALE = (o: Pick<Order, "status">) => o.status !== "CANCELLED" && o.status !== "AWAITING_PAYMENT";
+const DAY = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+/** YYYY-MM-DD of a date in the store's timezone. */
+function dayKey(d: Date, tz: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
 
 export default async function DashboardPage() {
   const tenant = await requireTenantContext();
   const supabase = await createClient();
+  const store = tenant.store;
+  const tz = store.timezone || "America/Sao_Paulo";
+  const since = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
-
-  const [{ data: ordersData }, { data: productsData }] = await Promise.all([
+  const [{ data: ordersData }, { data: productsData }, { count: zonesCount }, { count: hoursCount }, account] = await Promise.all([
     supabase
       .from("orders")
-      .select("*")
-      .eq("store_id", tenant.store.id)
+      .select("id, order_number, status, total_cents, created_at, customer_name_snapshot, fulfillment_type, payment_status")
+      .eq("store_id", store.id)
+      .gte("created_at", since)
       .order("created_at", { ascending: false })
-      .limit(200),
-    supabase
-      .from("products")
-      .select("*")
-      .eq("store_id", tenant.store.id)
-      .eq("is_archived", false)
-      .order("stock_quantity", { ascending: true }),
+      .limit(2000),
+    supabase.from("products").select("id, name, track_stock, stock_quantity, low_stock_threshold, is_available").eq("store_id", store.id).eq("is_archived", false),
+    supabase.from("delivery_zones").select("id", { count: "exact", head: true }).eq("store_id", store.id),
+    supabase.from("store_business_hours").select("id", { count: "exact", head: true }).eq("store_id", store.id),
+    getPaymentAccountStatus(store.id),
   ]);
 
   const orders = (ordersData ?? []) as Order[];
   const products = (productsData ?? []) as Product[];
+  const today = dayKey(new Date(), tz);
+  const todayOrders = orders.filter((o) => dayKey(new Date(o.created_at), tz) === today);
+  const todaySales = todayOrders.filter(COUNTS_AS_SALE);
+  const revenue = todaySales.reduce((n, o) => n + o.total_cents, 0);
+  const ticket = todaySales.length ? Math.round(revenue / todaySales.length) : 0;
+  const queue = {
+    NEW: orders.filter((o) => o.status === "NEW").length,
+    CONFIRMED: orders.filter((o) => o.status === "CONFIRMED").length,
+    PREPARING: orders.filter((o) => o.status === "PREPARING").length,
+    READY: orders.filter((o) => o.status === "READY").length,
+  };
 
-  const totalOrders = orders.length;
-  const newOrders = orders.filter((o) => o.status === "NEW").length;
-  const inProgressOrders = orders.filter((o) =>
-    ["CONFIRMED", "PREPARING", "READY"].includes(o.status)
-  ).length;
-  const completedOrders = orders.filter((o) => o.status === "COMPLETED").length;
-
-  const validRevenueOrders = orders.filter((o) => o.status !== "CANCELLED");
-  const totalRevenueCents = validRevenueOrders.reduce(
-    (sum, o) => sum + o.total_cents,
-    0
-  );
-
-  const lowStockProducts = products.filter(
-    (p) => p.track_stock && p.stock_quantity > 0 && p.stock_quantity <= p.low_stock_threshold
-  );
-  const outOfStockProducts = products.filter(
-    (p) => !p.is_available || (p.track_stock && p.stock_quantity === 0)
-  );
-
-  // Build last 7 days chart buckets from real orders
-  const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const dailyBuckets = Array.from({ length: 7 }, (_, idx) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - idx));
-    const dateKey = d.toISOString().slice(0, 10);
-    const dayOrders = validRevenueOrders.filter(
-      (o) => o.created_at.slice(0, 10) === dateKey
-    );
-    const revenueCents = dayOrders.reduce((acc, o) => acc + o.total_cents, 0);
-    return {
-      label: dayNames[d.getDay()],
-      dateKey,
-      revenueCents,
-      ordersCount: dayOrders.length,
-    };
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1000);
+    const key = dayKey(d, tz);
+    const sales = orders.filter((o) => COUNTS_AS_SALE(o) && dayKey(new Date(o.created_at), tz) === key);
+    return { key, label: DAY[new Date(`${key}T12:00:00`).getDay()], cents: sales.reduce((n, o) => n + o.total_cents, 0), count: sales.length };
   });
+  const max = Math.max(...days.map((d) => d.cents), 1);
+  const week = days.reduce((n, d) => n + d.cents, 0);
 
-  const maxDailyRevenue = Math.max(
-    ...dailyBuckets.map((b) => b.revenueCents),
-    1000
-  );
+  const low = products.filter((p) => p.track_stock && p.stock_quantity <= p.low_stock_threshold).sort((a, b) => a.stock_quantity - b.stock_quantity);
+
+  const setup = [
+    { done: products.length > 0, label: "Cadastrar o cardápio", href: "/menu-manager" },
+    { done: (zonesCount ?? 0) > 0 || !store.accepts_delivery, label: "Definir bairros de entrega", href: "/settings?tab=delivery" },
+    { done: (hoursCount ?? 0) > 0, label: "Configurar horários", href: "/settings?tab=hours" },
+    { done: account.connected, label: "Conectar o Mercado Pago", href: "/settings?tab=payments" },
+    { done: Boolean(store.logo_url), label: "Enviar o logo da loja", href: "/settings" },
+  ];
+  const pendingSetup = setup.filter((s) => !s.done);
+  const greeting = (() => {
+    const h = Number(new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "numeric", hour12: false }).format(new Date()));
+    return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  })();
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground">
-            Visão Operacional
-          </h1>
-          <p className="text-xs text-foreground-muted">
-            Indicadores em tempo real da operação de{" "}
-            <span className="font-medium text-foreground">
-              {tenant.store.name}
-            </span>
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button variant="secondary" size="sm" asChild>
-            <Link href="/menu-manager">
-              <UtensilsCrossed className="h-3.5 w-3.5" />
-              <span>Gerenciar Cardápio</span>
-            </Link>
-          </Button>
-          <Button size="sm" asChild>
+    <div className="mx-auto max-w-6xl space-y-8">
+      <PageHeader
+        eyebrow={new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "numeric", month: "long" }).format(new Date())}
+        title={`${greeting}, ${tenant.user.full_name.split(" ")[0]}.`}
+        description={`Como está ${store.name} agora.`}
+        actions={
+          <Button asChild>
             <Link href="/orders?new=1">
-              <Plus className="h-3.5 w-3.5" />
-              <span>Novo Pedido Manual</span>
+              <Plus className="h-4 w-4" /> Pedido no balcão
             </Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Onboarding Checklist Banner when store has 0 products */}
-      {products.length === 0 && (
-        <div className="rounded-xl border border-brand/40 bg-brand/10 p-5">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <Badge className="mb-2">Próximo Passo Recomendado</Badge>
-              <h2 className="font-heading text-base font-bold text-foreground">
-                Comece cadastrando suas categorias e produtos
-              </h2>
-              <p className="mt-1 text-xs text-foreground-muted">
-                Sua loja já está configurada em{" "}
-                <span className="font-mono text-brand">
-                  /menu/{tenant.store.slug}
-                </span>
-                . Adicione produtos para liberar pedidos no cardápio digital e
-                no balcão.
-              </p>
-            </div>
-            <Button asChild>
-              <Link href="/menu-manager">
-                Cadastrar Primeiro Produto
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Top KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-surface-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-foreground-muted">
-              Faturamento Bruto
+      {pendingSetup.length ? (
+        <section className="rounded-2xl border border-brand/30 bg-brand/[0.05] p-5 sm:p-6" aria-labelledby="setup-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="setup-title" className="font-display text-lg font-bold">
+              Deixe sua loja pronta para vender
+            </h2>
+            <span className="font-mono text-xs text-foreground-muted">
+              {setup.length - pendingSetup.length}/{setup.length} concluídos
             </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/15 text-brand">
-              <DollarSign className="h-4 w-4" />
-            </div>
           </div>
-          <p className="mt-3 font-heading text-2xl font-extrabold tabular-nums text-foreground">
-            {formatCurrencyCents(totalRevenueCents)}
-          </p>
-          <p className="mt-1 text-[11px] text-foreground-muted">
-            {validRevenueOrders.length} pedidos válidos ({totalOrders} no total)
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-surface-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-foreground-muted">
-              Novos Pedidos
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/15 text-brand">
-              <ShoppingBag className="h-4 w-4" />
-            </div>
+          <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${((setup.length - pendingSetup.length) / setup.length) * 100}%` }} />
           </div>
-          <p className="mt-3 font-heading text-2xl font-extrabold tabular-nums text-brand">
-            {newOrders}
-          </p>
-          <p className="mt-1 text-[11px] text-foreground-muted">
-            Aguardando confirmação imediata
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-surface-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-foreground-muted">
-              Em Andamento
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
-              <Clock className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-3 font-heading text-2xl font-extrabold tabular-nums text-foreground">
-            {inProgressOrders}
-          </p>
-          <p className="mt-1 text-[11px] text-foreground-muted">
-            Confirmados, em preparo ou prontos
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-surface-card p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-foreground-muted">
-              Pedidos Concluídos
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-3 font-heading text-2xl font-extrabold tabular-nums text-foreground">
-            {completedOrders}
-          </p>
-          <p className="mt-1 text-[11px] text-foreground-muted">
-            Entregues / finalizados com sucesso
-          </p>
-        </div>
-      </div>
-
-      {/* Revenue Chart + Stock Watchlist */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Revenue Overview Bar Chart (inspired by Levels reference UI) */}
-        <div className="rounded-xl border border-border bg-surface-card p-6 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-heading text-base font-bold text-foreground">
-                Visão de Receita (Últimos 7 dias)
-              </h2>
-              <p className="text-xs text-foreground-muted">
-                Desempenho diário de vendas confirmadas em tempo real
-              </p>
-            </div>
-            <Badge variant="default" className="tabular-nums">
-              {formatCurrencyCents(
-                dailyBuckets.reduce((acc, b) => acc + b.revenueCents, 0)
-              )}
-            </Badge>
-          </div>
-
-          <div className="mt-8 grid h-48 grid-cols-7 items-end gap-3 border-b border-border pb-3">
-            {dailyBuckets.map((bucket) => {
-              const heightPercent = Math.max(
-                8,
-                Math.round((bucket.revenueCents / maxDailyRevenue) * 100)
-              );
-              const countPercent = Math.max(
-                6,
-                Math.min(100, bucket.ordersCount * 14)
-              );
-              return (
-                <div
-                  key={bucket.dateKey}
-                  className="flex h-full flex-col items-center justify-end gap-2"
+          <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {setup.map((s) => (
+              <li key={s.label}>
+                <Link
+                  href={s.href}
+                  className={cn(
+                    "flex h-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition-colors",
+                    s.done ? "border-transparent text-foreground-subtle line-through" : "border-border bg-background/50 hover:border-brand/50"
+                  )}
                 >
-                  <div className="flex h-full w-full items-end justify-center gap-1.5">
-                    <div
-                      title={`${bucket.label}: ${formatCurrencyCents(
-                        bucket.revenueCents
-                      )}`}
-                      style={{ height: `${heightPercent}%` }}
-                      className="w-4 rounded-t-md bg-brand transition-all sm:w-5"
-                    />
-                    <div
-                      title={`${bucket.ordersCount} pedido(s)`}
-                      style={{ height: `${countPercent}%` }}
-                      className="w-3 rounded-t-md bg-brand/25 transition-all sm:w-4"
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border", s.done ? "border-success bg-success text-background" : "border-border-strong")}>
+                    {s.done ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+                  </span>
+                  {s.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
-          <div className="mt-3 grid grid-cols-7 text-center text-[11px] text-foreground-muted">
-            {dailyBuckets.map((bucket) => (
-              <div key={bucket.dateKey}>
-                <p className="font-medium text-foreground">{bucket.label}</p>
-                <p className="tabular-nums text-[10px]">
-                  {bucket.ordersCount} ped.
-                </p>
+      {/* KPIs */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Indicadores de hoje">
+        <Kpi label="Faturamento hoje" value={formatCurrencyCents(revenue)} hint="Pedidos não cancelados e pagos" accent />
+        <Kpi label="Pedidos hoje" value={String(todaySales.length)} hint={`${todayOrders.length - todaySales.length} cancelados/pendentes`} />
+        <Kpi label="Ticket médio" value={formatCurrencyCents(ticket)} />
+        <Kpi label="Últimos 7 dias" value={formatCurrencyCents(week)} />
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+        {/* Chart */}
+        <section className="surface-card p-5 sm:p-6" aria-labelledby="chart-title">
+          <div className="flex items-center justify-between">
+            <h2 id="chart-title" className="font-display font-bold">
+              Faturamento por dia
+            </h2>
+            <span className="text-xs text-foreground-muted">7 dias</span>
+          </div>
+          <div className="mt-6 flex h-48 items-end gap-2 sm:gap-3" role="img" aria-label={days.map((d) => `${d.label}: ${formatCurrencyCents(d.cents)}`).join(", ")}>
+            {days.map((d, i) => (
+              <div key={d.key} className="group flex h-full flex-1 flex-col items-center justify-end gap-2">
+                <span className="font-mono text-[10px] text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100">{formatCurrencyCents(d.cents)}</span>
+                <div
+                  className={cn("w-full rounded-t-lg transition-colors", i === days.length - 1 ? "bg-brand" : "bg-white/[0.09] group-hover:bg-white/20")}
+                  style={{ height: `${Math.max(2, (d.cents / max) * 100)}%` }}
+                />
+                <span className={cn("text-xs", i === days.length - 1 ? "font-medium text-foreground" : "text-foreground-muted")}>{d.label}</span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* Low Stock & Unavailable Products Watchlist */}
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-surface-card p-6">
-          <div>
-            <div className="flex items-center justify-between">
-              <h2 className="font-heading text-base font-bold text-foreground">
-                Alertas de Estoque
-              </h2>
-              <Badge
-                variant={
-                  lowStockProducts.length + outOfStockProducts.length > 0
-                    ? "warning"
-                    : "success"
-                }
-                className="tabular-nums"
-              >
-                {lowStockProducts.length + outOfStockProducts.length} alerta(s)
-              </Badge>
-            </div>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Produtos com estoque crítico ou indisponíveis
-            </p>
-
-            <div className="mt-5 space-y-2.5">
-              {lowStockProducts.length === 0 &&
-              outOfStockProducts.length === 0 ? (
-                <div className="rounded-lg border border-border bg-surface p-4 text-center">
-                  <Boxes className="mx-auto h-6 w-6 text-emerald-400" />
-                  <p className="mt-2 text-xs font-medium text-foreground">
-                    Estoque saudável
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-foreground-muted">
-                    Nenhum produto abaixo do limite mínimo configurado.
-                  </p>
-                </div>
-              ) : (
-                [...outOfStockProducts, ...lowStockProducts]
-                  .slice(0, 5)
-                  .map((prod) => {
-                    const isOut =
-                      !prod.is_available ||
-                      (prod.track_stock && prod.stock_quantity === 0);
-                    return (
-                      <div
-                        key={prod.id}
-                        className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-foreground">
-                            {prod.name}
-                          </p>
-                          <p className="text-[11px] text-foreground-muted tabular-nums">
-                            Saldo: {prod.stock_quantity} un. (Mín:{" "}
-                            {prod.low_stock_threshold})
-                          </p>
-                        </div>
-                        <Badge variant={isOut ? "danger" : "warning"}>
-                          {isOut ? "Esgotado" : "Estoque Baixo"}
-                        </Badge>
-                      </div>
-                    );
-                  })
-              )}
-            </div>
+        {/* Live queue */}
+        <section className="surface-card p-5 sm:p-6" aria-labelledby="queue-title">
+          <div className="flex items-center justify-between">
+            <h2 id="queue-title" className="font-display font-bold">
+              Fila agora
+            </h2>
+            <Link href="/orders" className="inline-flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground">
+              Abrir quadro <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
-
-          <div className="mt-5 border-t border-border pt-4">
-            <Button variant="secondary" size="sm" className="w-full" asChild>
-              <Link href="/inventory">
-                <AlertTriangle className="h-3.5 w-3.5 text-brand" />
-                <span>Abrir Central de Estoque</span>
-              </Link>
-            </Button>
-          </div>
-        </div>
+          <dl className="mt-5 grid grid-cols-2 gap-2">
+            {(Object.keys(queue) as (keyof typeof queue)[]).map((k) => (
+              <div key={k} className={cn("rounded-xl border p-3.5", k === "NEW" && queue.NEW ? "border-brand/40 bg-brand/[0.06]" : "border-border")}>
+                <dt className="text-xs text-foreground-muted">{ORDER_STATUS_LABEL[k]}</dt>
+                <dd className="mt-1 font-mono text-2xl">{queue[k]}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       </div>
 
-      {/* Recent Operational Activity */}
-      <div className="rounded-xl border border-border bg-surface-card p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-heading text-base font-bold text-foreground">
-              Atividade Operacional Recente
-            </h2>
-            <p className="text-xs text-foreground-muted">
-              Últimos pedidos recebidos pelo cardápio digital ou balcão
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="surface-card p-5 sm:p-6" aria-labelledby="recent-title">
+          <h2 id="recent-title" className="font-display font-bold">
+            Últimos pedidos
+          </h2>
+          {orders.length === 0 ? (
+            <p className="mt-6 text-sm text-foreground-muted">
+              Nenhum pedido ainda. Compartilhe o link <span className="font-mono text-foreground">/menu/{store.slug}</span> com seus clientes.
             </p>
-          </div>
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/orders">
-              Ver quadro de pedidos
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </div>
+          ) : (
+            <ul className="mt-4 divide-y divide-border">
+              {orders.slice(0, 6).map((o) => (
+                <li key={o.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                  <span className="min-w-0">
+                    <span className="font-mono text-foreground-muted">#{o.order_number}</span> <span className="truncate">{o.customer_name_snapshot}</span>
+                    <span className="block text-xs text-foreground-subtle">
+                      {FULFILLMENT_LABEL[o.fulfillment_type]} · {ORDER_STATUS_LABEL[o.status]}
+                    </span>
+                  </span>
+                  <span className="font-mono">{formatCurrencyCents(o.total_cents)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-        {orders.length === 0 ? (
-          <div className="mt-6 rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-            <ClipboardList className="mx-auto h-8 w-8 text-foreground-muted" />
-            <h3 className="mt-3 font-heading text-sm font-bold text-foreground">
-              Nenhum pedido registrado ainda
-            </h3>
-            <p className="mx-auto mt-1 max-w-md text-xs text-foreground-muted">
-              Assim que seus clientes enviarem pedidos pelo cardápio digital ou
-              você lançar pedidos manualmente, eles aparecerão aqui em tempo
-              real.
+        <section className="surface-card p-5 sm:p-6" aria-labelledby="stock-title">
+          <div className="flex items-center justify-between">
+            <h2 id="stock-title" className="font-display font-bold">
+              Estoque em alerta
+            </h2>
+            <Link href="/inventory" className="inline-flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground">
+              Ver estoque <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          {low.length === 0 ? (
+            <p className="mt-6 flex items-center gap-2 text-sm text-foreground-muted">
+              <Check className="h-4 w-4 text-success" /> Tudo abastecido.
             </p>
-          </div>
-        ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border text-[11px] uppercase tracking-wider text-foreground-muted">
-                  <th className="pb-3 font-semibold">Pedido</th>
-                  <th className="pb-3 font-semibold">Cliente</th>
-                  <th className="pb-3 font-semibold">Origem</th>
-                  <th className="pb-3 font-semibold">Status</th>
-                  <th className="pb-3 font-semibold">Total</th>
-                  <th className="pb-3 text-right font-semibold">Tempo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {orders.slice(0, 8).map((order) => {
-                  const statusMeta = STATUS_LABELS[order.status] ?? {
-                    label: order.status,
-                    variant: "secondary" as const,
-                  };
-                  return (
-                    <tr
-                      key={order.id}
-                      className="transition-colors hover:bg-surface/60"
-                    >
-                      <td className="py-3 font-mono font-bold text-foreground tabular-nums">
-                        #{order.order_number}
-                      </td>
-                      <td className="py-3">
-                        <p className="font-medium text-foreground">
-                          {order.customer_name_snapshot}
-                        </p>
-                        <p className="text-[11px] text-foreground-muted tabular-nums">
-                          {order.customer_phone_snapshot}
-                        </p>
-                      </td>
-                      <td className="py-3 text-foreground-muted">
-                        {order.source === "DIGITAL_MENU"
-                          ? "Cardápio Digital"
-                          : "Manual / Balcão"}
-                      </td>
-                      <td className="py-3">
-                        <Badge variant={statusMeta.variant}>
-                          {statusMeta.label}
-                        </Badge>
-                      </td>
-                      <td className="py-3 font-semibold text-foreground tabular-nums">
-                        {formatCurrencyCents(order.total_cents)}
-                      </td>
-                      <td className="py-3 text-right text-foreground-muted tabular-nums">
-                        há {formatElapsedMinutes(order.created_at)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          ) : (
+            <ul className="mt-4 divide-y divide-border">
+              {low.slice(0, 6).map((p) => (
+                <li key={p.id} className="flex items-center justify-between py-3 text-sm">
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className={cn("h-4 w-4", p.stock_quantity === 0 ? "text-danger" : "text-warning")} /> {p.name}
+                  </span>
+                  <span className={cn("font-mono", p.stock_quantity === 0 ? "text-danger" : "text-warning")}>{p.stock_quantity === 0 ? "esgotado" : `${p.stock_quantity} un`}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );
 }
 
+function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: boolean }) {
+  return (
+    <div className={cn("rounded-2xl border p-4 sm:p-5", accent ? "border-brand/30 bg-brand/[0.05]" : "border-border bg-surface")}>
+      <p className="text-xs text-foreground-muted">{label}</p>
+      <p className="mt-2 truncate font-mono text-xl font-medium tabular-nums sm:text-2xl">{value}</p>
+      {hint ? <p className="mt-1 truncate text-[11px] text-foreground-subtle">{hint}</p> : null}
+    </div>
+  );
+}

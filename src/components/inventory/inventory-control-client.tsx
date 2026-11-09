@@ -148,7 +148,7 @@ export function InventoryControlClient({
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground">
+          <h1 className="font-display text-display-sm font-extrabold sm:text-3xl">
             Central de Controle de Estoque
           </h1>
           <p className="text-xs text-foreground-muted">
@@ -164,7 +164,7 @@ export function InventoryControlClient({
               size="sm"
               onClick={() => openAdjustmentModal(selectedProduct, "EXIT")}
             >
-              <ArrowDownRight className="h-4 w-4 text-red-400" />
+              <ArrowDownRight className="h-4 w-4 text-danger" />
               <span>Registrar Saída</span>
             </Button>
             <Button
@@ -180,23 +180,23 @@ export function InventoryControlClient({
 
       {/* 4 Top KPI Summary Cards (Matching Inventory Control Center reference UI) */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border bg-surface-card p-5">
+        <div className="rounded-2xl border border-border bg-surface p-5">
           <span className="text-xs font-medium text-foreground-muted">
             Valor Estimado em Estoque
           </span>
-          <p className="mt-2 font-heading text-2xl font-extrabold text-foreground tabular-nums">
+          <p className="mt-2 font-display text-2xl font-extrabold text-foreground tabular-nums">
             {formatCurrencyCents(inventoryValueCents)}
           </p>
-          <p className="mt-1 text-[11px] text-emerald-400">
+          <p className="mt-1 text-[11px] text-success">
             Baseado no preço de venda atual
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface-card p-5">
+        <div className="rounded-2xl border border-border bg-surface p-5">
           <span className="text-xs font-medium text-foreground-muted">
             SKUs Monitorados
           </span>
-          <p className="mt-2 font-heading text-2xl font-extrabold text-foreground tabular-nums">
+          <p className="mt-2 font-display text-2xl font-extrabold text-foreground tabular-nums">
             {String(trackedProducts.length).padStart(2, "0")}
           </p>
           <p className="mt-1 text-[11px] text-foreground-muted">
@@ -204,26 +204,26 @@ export function InventoryControlClient({
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface-card p-5">
+        <div className="rounded-2xl border border-border bg-surface p-5">
           <span className="text-xs font-medium text-foreground-muted">
             Fila de Estoque Baixo
           </span>
-          <p className="mt-2 font-heading text-2xl font-extrabold text-amber-400 tabular-nums">
+          <p className="mt-2 font-display text-2xl font-extrabold text-warning tabular-nums">
             {String(lowStockQueue.length).padStart(2, "0")}
           </p>
-          <p className="mt-1 text-[11px] text-amber-400/80">
+          <p className="mt-1 text-[11px] text-warning/80">
             Abaixo ou igual ao limite mínimo
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface-card p-5">
+        <div className="rounded-2xl border border-border bg-surface p-5">
           <span className="text-xs font-medium text-foreground-muted">
             Produtos Esgotados
           </span>
-          <p className="mt-2 font-heading text-2xl font-extrabold text-red-400 tabular-nums">
+          <p className="mt-2 font-display text-2xl font-extrabold text-danger tabular-nums">
             {String(outOfStockQueue.length).padStart(2, "0")}
           </p>
-          <p className="mt-1 text-[11px] text-red-400/80">
+          <p className="mt-1 text-[11px] text-danger/80">
             Bloqueados automaticamente no cardápio
           </p>
         </div>
@@ -233,10 +233,10 @@ export function InventoryControlClient({
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {/* Low Stock Watchlist */}
-          <div className="rounded-xl border border-border bg-surface-card p-6">
+          <div className="rounded-2xl border border-border bg-surface p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-heading text-base font-bold text-foreground">
+                <h2 className="font-display text-base font-bold text-foreground">
                   Watchlist de Estoque Baixo
                 </h2>
                 <p className="text-xs text-foreground-muted">
@@ -251,7 +251,7 @@ export function InventoryControlClient({
 
             {lowStockQueue.length === 0 && outOfStockQueue.length === 0 ? (
               <div className="mt-4 rounded-xl border border-border bg-surface p-6 text-center">
-                <Boxes className="mx-auto h-7 w-7 text-emerald-400" />
+                <Boxes className="mx-auto h-7 w-7 text-success" />
                 <p className="mt-2 text-xs font-semibold text-foreground">
                   Todos os produtos estão com saldo acima do mínimo!
                 </p>
@@ -270,7 +270,7 @@ export function InventoryControlClient({
                       >
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="font-heading text-sm font-bold text-foreground">
+                            <p className="font-display text-sm font-bold text-foreground">
                               {item.name}
                             </p>
                             <p className="text-[11px] font-mono text-foreground-muted">
@@ -280,7 +280,7 @@ export function InventoryControlClient({
                           </div>
                           <AlertTriangle
                             className={`h-4 w-4 ${
-                              isCritical ? "text-red-400" : "text-brand"
+                              isCritical ? "text-danger" : "text-brand"
                             }`}
                           />
                         </div>
@@ -300,10 +300,10 @@ export function InventoryControlClient({
           </div>
 
           {/* Searchable Inventory Registry Table */}
-          <div className="rounded-xl border border-border bg-surface-card p-6">
+          <div className="rounded-2xl border border-border bg-surface p-6">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <h2 className="font-heading text-base font-bold text-foreground">
+                <h2 className="font-display text-base font-bold text-foreground">
                   Registro Geral de Estoque
                 </h2>
                 <p className="text-xs text-foreground-muted">
@@ -405,9 +405,9 @@ export function InventoryControlClient({
 
         {/* Right Column: Selected Item Inspector Panel */}
         <div className="space-y-6">
-          <div className="rounded-xl border border-border bg-surface-card p-6">
+          <div className="rounded-2xl border border-border bg-surface p-6">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-base font-bold text-foreground">
+              <h2 className="font-display text-base font-bold text-foreground">
                 Item Selecionado
               </h2>
               {selectedProduct && (
@@ -423,7 +423,7 @@ export function InventoryControlClient({
             {selectedProduct ? (
               <div className="mt-5 space-y-5">
                 <div className="rounded-xl border border-border bg-surface p-4">
-                  <h3 className="font-heading text-base font-bold text-foreground">
+                  <h3 className="font-display text-base font-bold text-foreground">
                     {selectedProduct.name}
                   </h3>
                   <p className="mt-0.5 text-xs text-foreground-muted">
@@ -447,11 +447,11 @@ export function InventoryControlClient({
                       <div
                         className={`h-full rounded-full transition-all ${
                           selectedProduct.stock_quantity === 0
-                            ? "bg-red-500"
+                            ? "bg-danger"
                             : selectedProduct.stock_quantity <=
                               selectedProduct.low_stock_threshold
                             ? "bg-brand"
-                            : "bg-emerald-400"
+                            : "bg-success"
                         }`}
                         style={{
                           width: `${Math.min(
@@ -474,7 +474,7 @@ export function InventoryControlClient({
                         <span className="text-[10px] text-foreground-muted">
                           Saldo Atual
                         </span>
-                        <p className="font-heading text-base font-extrabold text-foreground tabular-nums">
+                        <p className="font-display text-base font-extrabold text-foreground tabular-nums">
                           {selectedProduct.stock_quantity}
                         </p>
                       </div>
@@ -482,7 +482,7 @@ export function InventoryControlClient({
                         <span className="text-[10px] text-foreground-muted">
                           Ponto de Reposição
                         </span>
-                        <p className="font-heading text-base font-extrabold text-foreground tabular-nums">
+                        <p className="font-display text-base font-extrabold text-foreground tabular-nums">
                           {selectedProduct.low_stock_threshold}
                         </p>
                       </div>
@@ -503,7 +503,7 @@ export function InventoryControlClient({
                     size="sm"
                     onClick={() => openAdjustmentModal(selectedProduct, "EXIT")}
                   >
-                    <ArrowDownRight className="h-3.5 w-3.5 text-red-400" />
+                    <ArrowDownRight className="h-3.5 w-3.5 text-danger" />
                     <span>Saída</span>
                   </Button>
                   <Button
@@ -525,10 +525,10 @@ export function InventoryControlClient({
           </div>
 
           {/* Recent Stock Movements Ledger */}
-          <div className="rounded-xl border border-border bg-surface-card p-6">
+          <div className="rounded-2xl border border-border bg-surface p-6">
             <div className="flex items-center gap-2">
               <History className="h-4 w-4 text-brand" />
-              <h2 className="font-heading text-base font-bold text-foreground">
+              <h2 className="font-display text-base font-bold text-foreground">
                 Últimas Movimentações
               </h2>
             </div>
@@ -559,8 +559,8 @@ export function InventoryControlClient({
                         <span
                           className={`font-mono font-extrabold tabular-nums ${
                             mov.quantity_delta > 0
-                              ? "text-emerald-400"
-                              : "text-red-400"
+                              ? "text-success"
+                              : "text-danger"
                           }`}
                         >
                           {mov.quantity_delta > 0
@@ -597,7 +597,7 @@ export function InventoryControlClient({
           <div className="w-full max-w-md rounded-2xl border border-border bg-surface-card p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <h2 className="font-heading text-lg font-bold text-foreground">
+                <h2 className="font-display text-lg font-bold text-foreground">
                   Movimentar Estoque
                 </h2>
                 <p className="text-xs text-brand">{selectedProduct.name}</p>
@@ -613,7 +613,7 @@ export function InventoryControlClient({
 
             <form onSubmit={handleSaveAdjustment} className="mt-4 space-y-4">
               {error && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{error}</span>
                 </div>

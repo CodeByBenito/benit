@@ -58,7 +58,7 @@ export function CustomersClient({
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold text-foreground">
+          <h1 className="font-display text-display-sm font-extrabold sm:text-3xl">
             Clientes & Atendimento
           </h1>
           <p className="text-xs text-foreground-muted">
@@ -73,7 +73,7 @@ export function CustomersClient({
       </div>
 
       {/* Search Bar */}
-      <div className="rounded-xl border border-border bg-surface-card p-4">
+      <div className="rounded-2xl border border-border bg-surface p-4">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-foreground-muted" />
           <Input
@@ -86,11 +86,11 @@ export function CustomersClient({
       </div>
 
       {/* Customers Table */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         {filteredCustomers.length === 0 ? (
           <div className="p-12 text-center">
             <Users className="mx-auto h-10 w-10 text-foreground-muted" />
-            <h3 className="mt-3 font-heading text-base font-bold text-foreground">
+            <h3 className="mt-3 font-display text-base font-bold text-foreground">
               Nenhum cliente encontrado
             </h3>
             <p className="mx-auto mt-1 max-w-md text-xs text-foreground-muted">
@@ -130,7 +130,7 @@ export function CustomersClient({
                         {customer.total_orders} pedido(s)
                       </Badge>
                     </td>
-                    <td className="px-4 py-3.5 font-heading font-bold text-foreground tabular-nums">
+                    <td className="px-4 py-3.5 font-display font-bold text-foreground tabular-nums">
                       {formatCurrencyCents(customer.total_spent_cents)}
                     </td>
                     <td className="px-4 py-3.5 text-foreground-muted tabular-nums">
@@ -179,7 +179,7 @@ export function CustomersClient({
           <div className="flex h-full w-full max-w-md flex-col border-l border-border bg-surface-card p-6 shadow-2xl overflow-y-auto">
             <div className="flex items-start justify-between border-b border-border pb-4">
               <div>
-                <h2 className="font-heading text-lg font-bold text-foreground">
+                <h2 className="font-display text-lg font-bold text-foreground">
                   {selectedCustomer.name}
                 </h2>
                 <p className="text-xs text-foreground-muted tabular-nums">
@@ -200,7 +200,7 @@ export function CustomersClient({
                 <span className="text-[11px] text-foreground-muted">
                   Pedidos Realizados
                 </span>
-                <p className="mt-1 font-heading text-xl font-extrabold text-foreground tabular-nums">
+                <p className="mt-1 font-display text-xl font-extrabold text-foreground tabular-nums">
                   {selectedCustomer.total_orders}
                 </p>
               </div>
@@ -208,7 +208,7 @@ export function CustomersClient({
                 <span className="text-[11px] text-foreground-muted">
                   Valor Acumulado
                 </span>
-                <p className="mt-1 font-heading text-xl font-extrabold text-brand tabular-nums">
+                <p className="mt-1 font-display text-xl font-extrabold text-brand tabular-nums">
                   {formatCurrencyCents(selectedCustomer.total_spent_cents)}
                 </p>
               </div>
@@ -231,7 +231,7 @@ export function CustomersClient({
             </div>
 
             <div className="mt-6 space-y-3 border-t border-border pt-4">
-              <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-foreground-muted">
+              <h3 className="font-display text-xs font-bold uppercase tracking-wider text-foreground-muted">
                 Histórico de Pedidos ({customerOrders.length})
               </h3>
 

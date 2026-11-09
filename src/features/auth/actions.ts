@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { after } from "next/server";
+import { sendEmail } from "@/lib/email/send";
+import { welcomeEmail } from "@/lib/email/templates";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -237,6 +240,19 @@ export async function completeOnboardingAction(
       success: false,
       error: error.message,
     };
+  }
+
+  // Welcome email after the response (never blocks or fails onboarding).
+  const {
+    data: { user: onboardedUser },
+  } = await supabase.auth.getUser();
+  if (onboardedUser?.email) {
+    const mail = welcomeEmail({
+      name: (onboardedUser.user_metadata?.full_name as string) || onboardedUser.email.split("@")[0],
+      appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+    });
+    const to = onboardedUser.email;
+    after(() => sendEmail({ to, ...mail }));
   }
 
   if (data && typeof data === "object" && "store_id" in data) {

@@ -2,163 +2,78 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { AlertCircle, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
-import { BenitLogo } from "@/components/layout/benit-logo";
+import { ArrowRight, Loader2, MailCheck } from "lucide-react";
+import { AuthError, AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { registerAction } from "@/features/auth/actions";
 
 export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [confirm, setConfirm] = useState(false);
+  const [pending, start] = useTransition();
 
-  function handleSubmit(formData: FormData) {
+  function submit(formData: FormData) {
     setError(null);
-    startTransition(async () => {
+    start(async () => {
       const res = await registerAction(formData);
-      if (res && !res.success) {
-        setError(res.error ?? "Erro ao criar conta.");
-      } else if (res?.data?.requiresEmailConfirmation) {
-        setNeedsConfirmation(true);
-      }
+      if (res && !res.success) setError(res.error ?? "Não foi possível criar a conta.");
+      else if (res?.data?.requiresEmailConfirmation) setConfirm(true);
     });
   }
 
+  if (confirm) {
+    return (
+      <AuthShell title="Confira seu e-mail." subtitle="Enviamos um link de confirmação. Depois de confirmar, é só entrar e configurar sua loja.">
+        <div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 p-5 text-sm text-success">
+          <MailCheck className="h-5 w-5 shrink-0" /> Conta criada. Não achou o e-mail? Olhe a caixa de spam.
+        </div>
+        <Button asChild variant="secondary" className="mt-6 w-full" size="lg">
+          <Link href="/login">Ir para o login</Link>
+        </Button>
+      </AuthShell>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <BenitLogo href="/" showTagline />
+    <AuthShell
+      title="Crie sua conta."
+      subtitle="Em poucos minutos sua loja está no ar, com cardápio, pedidos e estoque."
+      footer={
+        <>
+          Já tem conta?{" "}
+          <Link href="/login" className="font-medium text-foreground underline decoration-brand underline-offset-4">
+            Entrar
+          </Link>
+        </>
+      }
+    >
+      <AuthError message={error} />
+      <form action={submit} className="space-y-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="fullName">Seu nome</Label>
+          <Input id="fullName" name="fullName" required autoComplete="name" className="h-11" />
         </div>
-
-        <div className="rounded-2xl border border-border bg-surface-card p-6 shadow-xl sm:p-8">
-          <div className="mb-6">
-            <h1 className="font-heading text-xl font-bold text-foreground">
-              Criar conta de proprietário
-            </h1>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Cadastre-se para configurar sua loja e publicar seu cardápio
-              digital.
-            </p>
-          </div>
-
-          {error && (
-            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {needsConfirmation ? (
-            <div className="space-y-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-300">
-              <div className="flex items-center gap-2 font-semibold text-emerald-400">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Conta criada com sucesso!</span>
-              </div>
-              <p className="leading-relaxed">
-                Enviamos um link de confirmação para o seu e-mail. Confirme seu
-                e-mail e depois faça login para concluir a configuração da sua
-                loja.
-              </p>
-              <Button asChild className="w-full">
-                <Link href="/login">Ir para Login</Link>
-              </Button>
-            </div>
-          ) : (
-            <form action={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="fullName"
-                  className="block text-xs font-medium text-foreground"
-                >
-                  Seu Nome Completo
-                </label>
-                <Input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  placeholder="Ex: Guilherme Benito"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="email"
-                  className="block text-xs font-medium text-foreground"
-                >
-                  E-mail Profissional
-                </label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="voce@sua-loja.com.br"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="phone"
-                  className="block text-xs font-medium text-foreground"
-                >
-                  WhatsApp / Telefone
-                </label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  placeholder="(11) 99999-9999"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="password"
-                  className="block text-xs font-medium text-foreground"
-                >
-                  Senha (mínimo 6 caracteres)
-                </label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isPending}>
-                {isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Criando conta...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Continuar para Configurar Loja</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </form>
-          )}
-
-          <div className="mt-6 border-t border-border pt-5 text-center text-xs text-foreground-muted">
-            Já possui uma conta?{" "}
-            <Link
-              href="/login"
-              className="font-semibold text-brand hover:underline"
-            >
-              Fazer login
-            </Link>
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email">E-mail</Label>
+          <Input id="email" name="email" type="email" required autoComplete="email" className="h-11" />
         </div>
-      </div>
-    </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="phone">WhatsApp (opcional)</Label>
+          <Input id="phone" name="phone" inputMode="tel" autoComplete="tel" className="h-11" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="password">Senha</Label>
+          <Input id="password" name="password" type="password" required minLength={6} autoComplete="new-password" className="h-11" />
+          <p className="text-xs text-foreground-subtle">Mínimo de 6 caracteres.</p>
+        </div>
+        <Button type="submit" size="lg" className="w-full" disabled={pending}>
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {pending ? "Criando conta…" : "Criar conta"}
+          {!pending ? <ArrowRight className="h-4 w-4" /> : null}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
-

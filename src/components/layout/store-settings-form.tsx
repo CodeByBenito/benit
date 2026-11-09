@@ -71,24 +71,24 @@ export function StoreSettingsForm({ store }: { store: Store }) {
   return (
     <form onSubmit={handleSave} className="space-y-6">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
+          <AlertCircle className="h-4 w-4 shrink-0 text-danger" />
           <span>{error}</span>
         </div>
       )}
 
       {saved && (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+        <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-xs text-success">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
           <span>Configurações atualizadas com sucesso!</span>
         </div>
       )}
 
       {/* Public Link Banner */}
-      <div className="rounded-xl border border-border bg-surface-card p-5">
+      <div className="rounded-2xl border border-border bg-surface p-5">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <h2 className="font-heading text-sm font-bold text-foreground">
+            <h2 className="font-display text-sm font-bold text-foreground">
               Link do Cardápio Digital
             </h2>
             <p className="mt-0.5 text-xs text-foreground-muted">
@@ -117,8 +117,8 @@ export function StoreSettingsForm({ store }: { store: Store }) {
       </div>
 
       {/* Store Identity */}
-      <div className="rounded-xl border border-border bg-surface-card p-6 space-y-4">
-        <h2 className="font-heading text-base font-bold text-foreground">
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+        <h2 className="font-display text-base font-bold text-foreground">
           Dados do Estabelecimento
         </h2>
 
@@ -218,8 +218,8 @@ export function StoreSettingsForm({ store }: { store: Store }) {
       </div>
 
       {/* Operational Toggles */}
-      <div className="rounded-xl border border-border bg-surface-card p-6 space-y-4">
-        <h2 className="font-heading text-base font-bold text-foreground">
+      <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+        <h2 className="font-display text-base font-bold text-foreground">
           Status de Funcionamento
         </h2>
 
