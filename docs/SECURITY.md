@@ -57,3 +57,15 @@ BENIT enforces security across four distinct layers:
 
 - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are safe in the browser because `anon` cannot read any base table directly.
 - `SUPABASE_SERVICE_ROLE_KEY` is never exposed to client code and `.env*` files are excluded via `.gitignore`.
+
+
+## 6. Payments & Public Surfaces (migrations 0005–0007)
+
+- **Secrets table.** `store_payment_accounts`, `oauth_states` and `webhook_events` have RLS enabled with zero policies plus `REVOKE ALL` from `anon`/`authenticated`: only the service role can touch them. Mercado Pago tokens are additionally encrypted in the app (AES-256-GCM, `TOKEN_ENC_KEY`).
+- **Guard triggers.** Direct PostgREST writes (`current_user = 'authenticated'`) cannot change an order's status, totals, payment fields, stock flags or public token. Those change only inside SECURITY DEFINER RPCs. Store payment/publication settings can only be changed by OWNER/MANAGER (`can_manage_store`), and online payment cannot be enabled without an active connected account.
+- **Role checks in the app.** Settings, zones, hours, coupons and Mercado Pago connect/disconnect actions call `requireStoreManager()` before writing.
+- **Webhook.** Every request's `x-signature` is verified with HMAC-SHA256 (constant-time compare, timestamp tolerance). The payment is re-fetched from Mercado Pago with the store's token and its `external_reference` must belong to that store. Duplicate events are dropped by a unique key.
+- **OAuth.** CSRF `state` with a 10-minute TTL, PKCE (S256). The callback re-checks the logged-in user and their role.
+- **RPC privileges.** `apply_payment_update`, `record_payment_attempt`, `mark_refund_failed` and `expire_unpaid_orders` are granted to `service_role` only. The legacy 12-argument `create_order_atomic`, which trusted client fees, is dropped.
+- **Public tracking.** `get_public_order_by_token` needs a 64-hex (256-bit) token and returns no name, phone or address. Realtime broadcast payloads carry only status fields.
+- **Crons** require `Authorization: Bearer CRON_SECRET` (constant-time compare).

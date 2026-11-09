@@ -51,3 +51,20 @@ erDiagram
 - **`order_items` & `order_item_options`**: Immutable snapshots (`product_name_snapshot`, `unit_price_cents`, `options_unit_price_cents`, `total_item_cents`, `group_name_snapshot`, `option_name_snapshot`, `price_cents`) with composite tenant FKs.
 - **`order_status_history`**: Audit log of every status transition (`from_status`, `to_status`, `reason`, `changed_by`, `created_at`).
 - **`stock_movements`**: Immutable ledger (`INITIAL`, `ENTRY`, `EXIT`, `ADJUSTMENT`, `ORDER_DEDUCTION`, `ORDER_REVERSAL`) with `quantity_delta`, `previous_quantity`, `new_quantity`, `reference_key` (`UNIQUE`), `reason`, `created_by`.
+
+
+## 4. Checkout & Payments Extension (0004–0007)
+
+| Table / change | Purpose | Access |
+|---|---|---|
+| `order_status` + `AWAITING_PAYMENT` | Online orders before approval | — |
+| `stores` + timezone, min order, fulfillment flags, offline methods, pix key, online flag, payment window, ETA | Checkout configuration | members read; OWNER/MANAGER write (trigger) |
+| `store_business_hours` | Weekly slots (overnight allowed) | members read; managers write |
+| `delivery_zones` | Neighborhood groups with fee/min/ETA (normalized array + GIN index) | members read; managers write |
+| `coupons`, `coupon_redemptions` | Discounts and usage ledger | coupons: managers write; redemptions: read-only, RPC writes |
+| `orders` + payment_method/status, expires/paid at, public_token, delivery_address, zone, coupon, eta, counted_in_stats | Payment and delivery state | protected columns: RPC only |
+| `payments` | One row per provider payment (Pix QR, status, amounts) | members read; RPC writes |
+| `store_payment_accounts` | Encrypted Mercado Pago OAuth tokens | service role only |
+| `oauth_states`, `webhook_events` | OAuth CSRF/PKCE, webhook dedupe | service role only |
+
+Key RPCs: `quote_checkout` (anon, preview), `create_order_atomic` (16 args), `transition_order_status_atomic`, `apply_payment_update` (service), `expire_unpaid_orders` (service), `get_public_order_by_token` (anon), `get_public_menu_by_slug` (now also returns hours, zones, accepted methods, MP public key).

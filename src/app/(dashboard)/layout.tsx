@@ -2,6 +2,9 @@ import { requireTenantContext } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 
+// Per-user, per-tenant data: never prerender.
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {

@@ -9,7 +9,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "verify:scroll": "node scripts/verify-scroll.mjs --url http://localhost:3100 --out verification"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

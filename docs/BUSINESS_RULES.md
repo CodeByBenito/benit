@@ -46,3 +46,22 @@
 | **A product becomes unavailable** | `get_public_menu_by_slug` reflects `is_available = false` immediately, and `create_order_atomic` rejects any in-flight checkout with `PRODUCT_UNAVAILABLE`. |
 | **A real-time connection fails** | `useStoreRealtime` listens to WebSocket status, `online`, and `visibilitychange`, automatically triggering `router.refresh()` to reconcile state from PostgreSQL. |
 | **Duplicate request submission** | `UNIQUE (store_id, idempotency_key)` on `orders` returns the existing order receipt on replay; `stock_deducted` + `UNIQUE (reference_key)` on `stock_movements` prevents double stock deductions. |
+
+
+## 4. Checkout, Delivery, Coupons & Online Payments (migrations 0004–0007)
+
+- **Server is the only price authority.** For digital orders, `create_order_atomic` ignores any client fee/discount and computes: item subtotal → coupon discount → zone fee. Minimum order = max(store minimum, zone minimum), checked against the subtotal before discount.
+- **Business hours.** A store accepts digital orders when `is_open` (manual switch) is on **and** the current time (store timezone) falls in a `store_business_hours` slot. A slot with `closes_at <= opens_at` crosses midnight. A store with no slots is considered always open while `is_open`.
+- **Delivery zones.** Neighborhood-only. Matching is accent- and case-insensitive (`São João` = `sao joao`). If a store has active zones, delivery to an unlisted neighborhood is rejected. With no zones, delivery has no fee.
+- **Coupons.** PERCENT (1–100, optional cap) or FIXED (cents). Validity window, minimum order, global usage limit and per-customer limit (by phone) are enforced under a row lock, so concurrent checkouts cannot exceed limits. Cancelling or expiring an order releases its redemption.
+- **Payment methods.** Online (`ONLINE_PIX`, `ONLINE_CARD`) needs a connected Mercado Pago account and `online_payment_enabled`. Offline methods must be in `stores.offline_methods`.
+- **Online order lifecycle.**
+  - The order is created as `AWAITING_PAYMENT` with `payment_status = PENDING`. It does not count in customer stats and does not touch stock.
+  - Staff can only cancel an order in this state.
+  - Approval (via webhook) reserves stock immediately and moves the order to `NEW` / `APPROVED`. If stock is short, the order is cancelled, the payment goes to `REFUND_PENDING` and the app refunds it automatically.
+  - If the approved amount differs from the order total, the order never advances and a refund is requested.
+  - Payment after expiry or cancellation → refund.
+  - Unpaid orders past `payment_expires_at` are cancelled by `expire_unpaid_orders()` (pg_cron every minute; `/api/cron/expire` as fallback).
+- **Offline orders** keep the original rule: stock is deducted on confirmation and returned on cancellation.
+- **Cancelling a paid order** returns stock, releases the coupon, reverses customer stats and triggers an automatic refund on Mercado Pago.
+- **Idempotency.** The checkout sends one idempotency key per bag session, so double taps and retries return the same order. Webhook events are deduplicated, and the payment state never regresses.
