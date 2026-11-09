@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { integrations } from "@/lib/env";
+import { refundOrder } from "@/lib/mercadopago/process";
 import { createClient } from "@/lib/supabase/server";
 import {
   createOrderSchema,
@@ -45,6 +48,7 @@ export async function createOrderAction(
     p_fee_cents: d.source === "MANUAL" ? d.feeCents : 0,
     p_initial_status: d.source === "MANUAL" ? d.initialStatus : "NEW",
     p_idempotency_key: d.idempotencyKey || null,
+    p_payment_method: d.source === "MANUAL" ? d.paymentMethod ?? null : null,
   });
 
   if (error) {
@@ -78,7 +82,7 @@ export async function transitionOrderStatusAction(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("transition_order_status_atomic", {
+  const { data, error } = await supabase.rpc("transition_order_status_atomic", {
     p_store_id: parsed.data.storeId,
     p_order_id: parsed.data.orderId,
     p_new_status: parsed.data.newStatus,
@@ -93,11 +97,18 @@ export async function transitionOrderStatusAction(
     };
   }
 
+  // Cancelling a paid online order: refund on Mercado Pago after responding.
+  const result = data as { refund_required?: boolean } | null;
+  if (result?.refund_required && integrations.mercadoPago && integrations.supabaseAdmin) {
+    const { storeId, orderId } = parsed.data;
+    after(() => refundOrder(storeId, orderId));
+  }
+
   revalidatePath("/orders");
   revalidatePath("/dashboard");
   revalidatePath("/inventory");
   revalidatePath("/customers");
 
-  return { success: true };
+  return { success: true, data: result };
 }
 

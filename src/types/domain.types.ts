@@ -2,12 +2,24 @@ export type MembershipRole = "OWNER" | "MANAGER" | "ATTENDANT" | "KITCHEN";
 export type OrderSource = "DIGITAL_MENU" | "MANUAL";
 export type FulfillmentType = "DINE_IN" | "PICKUP" | "DELIVERY";
 export type OrderStatus =
+  | "AWAITING_PAYMENT"
   | "NEW"
   | "CONFIRMED"
   | "PREPARING"
   | "READY"
   | "COMPLETED"
   | "CANCELLED";
+export type PaymentMethod = "ONLINE_PIX" | "ONLINE_CARD" | "CASH" | "CARD_ON_DELIVERY" | "PIX_MANUAL";
+export type PaymentStatus =
+  | "PAY_ON_DELIVERY"
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "REFUND_PENDING"
+  | "REFUNDED";
+export type CouponKind = "PERCENT" | "FIXED";
+
 export type StockMovementType =
   | "INITIAL"
   | "ENTRY"
@@ -64,8 +76,65 @@ export interface Store {
   is_open: boolean;
   is_published: boolean;
   last_order_number: number;
+  timezone: string;
+  min_order_cents: number;
+  accepts_delivery: boolean;
+  accepts_pickup: boolean;
+  accepts_dine_in: boolean;
+  offline_methods: PaymentMethod[];
+  pix_key: string | null;
+  online_payment_enabled: boolean;
+  payment_window_minutes: number;
+  notify_owner_email: boolean;
+  default_eta_minutes: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface BusinessHour {
+  id: string;
+  store_id: string;
+  weekday: number;
+  opens_at: string;
+  closes_at: string;
+}
+
+export interface DeliveryZone {
+  id: string;
+  store_id: string;
+  name: string;
+  neighborhoods: string[];
+  fee_cents: number;
+  min_order_cents: number | null;
+  eta_minutes: number | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface Coupon {
+  id: string;
+  store_id: string;
+  code: string;
+  description: string | null;
+  kind: CouponKind;
+  value: number;
+  max_discount_cents: number | null;
+  min_order_cents: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  usage_limit: number | null;
+  per_customer_limit: number | null;
+  used_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface DeliveryAddress {
+  street: string;
+  number?: string;
+  complement?: string;
+  neighborhood: string;
+  reference?: string;
 }
 
 export interface Category {
@@ -196,6 +265,15 @@ export interface Order {
   stock_deducted: boolean;
   idempotency_key: string | null;
   created_by: string | null;
+  payment_method: PaymentMethod | null;
+  payment_status: PaymentStatus;
+  payment_expires_at: string | null;
+  paid_at: string | null;
+  change_for_cents: number | null;
+  public_token: string;
+  delivery_address: DeliveryAddress | null;
+  eta_minutes: number | null;
+  coupon_code_snapshot: string | null;
   created_at: string;
   updated_at: string;
   items?: OrderItem[];

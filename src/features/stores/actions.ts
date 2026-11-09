@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { storeSettingsSchema } from "@/lib/validations";
 import { ACTIVE_STORE_COOKIE } from "@/lib/permissions/tenant";
 import type { ActionResult } from "@/features/auth/actions";
+import { requireStoreManager } from "@/features/permissions";
 
 export async function switchActiveStoreAction(storeId: string) {
   const cookieStore = await cookies();
@@ -45,6 +46,9 @@ export async function updateStoreSettingsAction(
       error: parsed.error.issues[0]?.message ?? "Dados da loja inválidos.",
     };
   }
+
+  const guard = await requireStoreManager(parsed.data.storeId);
+  if (!guard.ok) return { success: false, error: guard.error };
 
   const supabase = await createClient();
   const { error } = await supabase
