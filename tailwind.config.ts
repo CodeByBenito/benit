@@ -57,8 +57,8 @@ const config: Config = {
       },
       fontSize: {
         // Fluid display scale (clamp: mobile → desktop)
-        "display-2xl": ["clamp(3.25rem, 9vw, 9.5rem)", { lineHeight: "0.9", letterSpacing: "-0.045em" }],
-        "display-xl": ["clamp(2.75rem, 6.5vw, 6.5rem)", { lineHeight: "0.94", letterSpacing: "-0.04em" }],
+        "display-2xl": ["clamp(3.25rem, 9vw, 9.5rem)", { lineHeight: "0.9", letterSpacing: "-0.035em" }],
+        "display-xl": ["clamp(2.75rem, 6.5vw, 6.5rem)", { lineHeight: "0.94", letterSpacing: "-0.028em" }],
         "display-lg": ["clamp(2.25rem, 4.6vw, 4.5rem)", { lineHeight: "0.98", letterSpacing: "-0.035em" }],
         "display-md": ["clamp(1.75rem, 3vw, 2.75rem)", { lineHeight: "1.04", letterSpacing: "-0.03em" }],
         "display-sm": ["clamp(1.375rem, 2vw, 1.75rem)", { lineHeight: "1.12", letterSpacing: "-0.02em" }],

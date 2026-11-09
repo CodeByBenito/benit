@@ -3,34 +3,46 @@ import { cn } from "@/lib/utils";
 
 interface BenitLogoProps {
   className?: string;
-  href?: string;
+  href?: string | null;
   showTagline?: boolean;
+  tone?: "light" | "dark";
 }
 
-export function BenitLogo({
-  className,
-  href = "/dashboard",
-  showTagline = false,
-}: BenitLogoProps) {
+/**
+ * Wordmark: lowercase display "benit" with the orange live-order dot as the
+ * tittle of the "i" — the same dot that pulses when an order arrives.
+ */
+export function BenitLogo({ className, href = "/dashboard", showTagline = false, tone = "light" }: BenitLogoProps) {
   const content = (
-    <div className={cn("inline-flex flex-col select-none", className)}>
-      <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand font-heading text-xs font-extrabold tracking-tight text-white">
-          B
+    <span className={cn("inline-flex select-none flex-col", className)}>
+      <span className="sr-only">BENIT</span>
+      <span
+        aria-hidden
+        className={cn(
+          "relative font-display text-[1.45rem] font-extrabold leading-none tracking-[-0.06em]",
+          tone === "light" ? "text-foreground" : "text-cream-ink"
+        )}
+        style={{ fontVariationSettings: '"opsz" 96, "wdth" 85' }}
+      >
+        ben
+        <span className="relative inline-block">
+          ı
+          <span className="absolute left-1/2 top-[0.02em] h-[0.2em] w-[0.2em] -translate-x-1/2 rounded-full bg-brand" />
         </span>
-        <span className="font-heading text-lg font-extrabold uppercase tracking-wider text-foreground">
-          BENIT<span className="text-brand">.</span>
-        </span>
-      </div>
+        t
+      </span>
       {showTagline && (
-        <span className="mt-0.5 text-[11px] font-medium tracking-wide text-foreground-muted">
+        <span className={cn("mt-1 text-[11px] font-medium tracking-wide", tone === "light" ? "text-foreground-muted" : "text-cream-muted")}>
           Sua operação. Sob controle.
         </span>
       )}
-    </div>
+    </span>
   );
 
   if (!href) return content;
-  return <Link href={href}>{content}</Link>;
+  return (
+    <Link href={href} aria-label="BENIT — início" className="rounded-md focus-visible:outline-offset-4">
+      {content}
+    </Link>
+  );
 }
-
