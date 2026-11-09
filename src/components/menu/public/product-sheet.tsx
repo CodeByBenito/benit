@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Minus, Plus } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,13 +22,14 @@ export function ProductSheet({
 }: {
   product: PublicProduct | null;
   onClose: () => void;
-  onAdd: (item: Omit<CartItem, "key">) => void;
+  onAdd: (item: Omit<CartItem, "key">, origin?: DOMRect) => void;
   disabled: boolean;
 }) {
   const [qty, setQty] = useState(1);
   const [selected, setSelected] = useState<Record<string, PublicOptionItem[]>>({});
   const [notes, setNotes] = useState("");
   const [touched, setTouched] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setQty(1);
@@ -62,7 +63,7 @@ export function ProductSheet({
   function submit() {
     setTouched(true);
     if (unmet.length || soldOut || disabled || !product) return;
-    onAdd({ productId: product.id, name: product.name, unitCents: unit, quantity: qty, options, notes: notes.trim() });
+    onAdd({ productId: product.id, name: product.name, unitCents: unit, quantity: qty, options, notes: notes.trim() }, addRef.current?.getBoundingClientRect());
     onClose();
   }
 
@@ -164,6 +165,7 @@ export function ProductSheet({
           </div>
           <button
             type="button"
+            ref={addRef}
             onClick={submit}
             disabled={soldOut || disabled}
             className="flex h-12 flex-1 items-center justify-between rounded-full bg-brand px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-elevated disabled:text-foreground-muted"

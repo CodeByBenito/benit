@@ -131,6 +131,8 @@ export function CheckoutSheet({
   if (quote && !quote.accepting_now) blockers.push("A loja está fechada agora.");
   if (quote && !quote.meets_minimum) blockers.push(`Pedido mínimo de ${formatCurrencyCents(quote.min_order_cents)}.`);
   if (needsZone && quote?.zone_error) blockers.push(quote.zone_error);
+  // A coupon that became invalid once the phone was known (per-customer limit) blocks until removed.
+  const couponBlocked = Boolean(coupon && quote?.coupon_error);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -354,6 +356,24 @@ export function CheckoutSheet({
 
             <div className="border-t border-border bg-surface p-5">
               <Summary subtotal={subtotal} quote={quote} total={total} quoting={quoting} compact />
+              {coupon && quote?.coupon_error ? (
+                <div role="alert" className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <span>
+                    Cupom {coupon}: {quote.coupon_error}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoupon("");
+                      setCouponInput("");
+                      setError(null);
+                    }}
+                    className="shrink-0 font-semibold underline underline-offset-2"
+                  >
+                    Remover cupom
+                  </button>
+                </div>
+              ) : null}
               {blockers.length || error ? (
                 <p role="alert" className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
                   {error ?? blockers[0]}
@@ -361,7 +381,7 @@ export function CheckoutSheet({
               ) : null}
               <button
                 type="submit"
-                disabled={placing || blockers.length > 0 || !method}
+                disabled={placing || blockers.length > 0 || couponBlocked || !method}
                 className="mt-3 flex h-12 w-full items-center justify-between rounded-full bg-brand px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-surface-elevated disabled:text-foreground-muted"
               >
                 <span className="flex items-center gap-2">

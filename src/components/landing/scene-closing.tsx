@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { BenitLogo } from "@/components/layout/benit-logo";
+import { Magnetic } from "./fx";
 import { gsap, MOTION_OK, useGSAP } from "./motion";
 
 /**
@@ -30,7 +31,7 @@ export function SceneClosing({ ctaHref }: { ctaHref: string }) {
 
   return (
     <section ref={root} className="relative overflow-hidden bg-background" aria-labelledby="closing-title">
-      <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[60vw] w-[60vw] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/[0.07] blur-[120px]" />
+      <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[60vw] w-[60vw] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/[0.08] blur-[120px] motion-safe:animate-breathe" />
       <div className="relative mx-auto max-w-[1400px] px-4 pb-16 pt-32 sm:px-8 sm:pt-48">
         <h2 id="closing-title" className="font-display text-display-xl font-extrabold" style={{ fontVariationSettings: '"opsz" 96, "wdth" 90' }}>
           <span data-word-left className="block">Bora colocar sua</span>
@@ -42,6 +43,7 @@ export function SceneClosing({ ctaHref }: { ctaHref: string }) {
           <p className="max-w-md text-lg text-foreground-muted">
             Conta pra gente como funciona a sua operação. A gente mostra o BENIT rodando com o seu cardápio.
           </p>
+          <Magnetic>
           <a
             href={ctaHref}
             target={ctaHref.startsWith("http") ? "_blank" : undefined}
@@ -53,6 +55,7 @@ export function SceneClosing({ ctaHref }: { ctaHref: string }) {
               <ArrowUpRight className="h-5 w-5" />
             </span>
           </a>
+          </Magnetic>
         </div>
 
         <footer className="mt-32 flex flex-col gap-8 border-t border-white/[0.07] pt-10 text-sm text-foreground-muted sm:flex-row sm:items-center sm:justify-between">

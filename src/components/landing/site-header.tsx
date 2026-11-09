@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { BenitLogo } from "@/components/layout/benit-logo";
+import { Magnetic } from "./fx";
 import { cn } from "@/lib/utils";
 
 export function SiteHeader({ ctaHref }: { ctaHref: string }) {
@@ -42,6 +43,7 @@ export function SiteHeader({ ctaHref }: { ctaHref: string }) {
           <Link href="/login" className="hidden px-2 text-sm text-foreground-muted transition-colors hover:text-foreground sm:block">
             Entrar
           </Link>
+          <Magnetic strength={0.25}>
           <a
             href={ctaHref}
             target={ctaHref.startsWith("http") ? "_blank" : undefined}
@@ -51,6 +53,7 @@ export function SiteHeader({ ctaHref }: { ctaHref: string }) {
             Falar com a gente
             <ArrowUpRight className="h-4 w-4 transition-transform duration-base ease-out-expo group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
           </a>
+          </Magnetic>
         </div>
       </div>
     </header>

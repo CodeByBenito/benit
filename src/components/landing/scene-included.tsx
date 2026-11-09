@@ -4,6 +4,7 @@ import { useRef } from "react";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Plus } from "lucide-react";
 import { FAQ, INCLUDED, SECURITY, SHOW_TESTIMONIALS, TESTIMONIALS } from "./content";
+import { useCurtain } from "./fx";
 import { gsap, MOTION_OK, useGSAP } from "./motion";
 
 /**
@@ -12,6 +13,7 @@ import { gsap, MOTION_OK, useGSAP } from "./motion";
  */
 export function SceneIncluded() {
   const root = useRef<HTMLElement>(null);
+  useCurtain(root);
 
   useGSAP(
     () => {
@@ -45,9 +47,10 @@ export function SceneIncluded() {
           </div>
           <ul data-stagger className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
             {INCLUDED.map((item, i) => (
-              <li key={item.title} className="border-t border-cream-line pt-5">
+              <li key={item.title} className="group relative border-t border-cream-line pt-5">
+                <span aria-hidden className="absolute -top-px left-0 h-0.5 w-0 bg-brand transition-all duration-slower ease-out-expo group-hover:w-full" />
                 <span className="font-mono text-xs text-cream-muted">{String(i + 1).padStart(2, "0")}</span>
-                <h3 className="mt-2 font-display text-xl font-bold tracking-tight">{item.title}</h3>
+                <h3 className="mt-2 font-display text-xl font-bold tracking-tight transition-transform duration-slow ease-out-expo group-hover:translate-x-1">{item.title}</h3>
                 <p className="mt-2 text-[15px] leading-relaxed text-cream-muted">{item.body}</p>
               </li>
             ))}
@@ -101,7 +104,7 @@ export function SceneIncluded() {
                     </span>
                   </Accordion.Trigger>
                 </Accordion.Header>
-                <Accordion.Content className="overflow-hidden data-[state=closed]:animate-none">
+                <Accordion.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
                   <p className="max-w-2xl pb-6 text-base leading-relaxed text-cream-muted">{f.a}</p>
                 </Accordion.Content>
               </Accordion.Item>

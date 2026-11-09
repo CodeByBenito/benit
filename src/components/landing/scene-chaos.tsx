@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { PAINS } from "./content";
+import { useCurtain } from "./fx";
 import { gsap, MOTION_OK, useGSAP } from "./motion";
 
 /**
@@ -11,6 +12,7 @@ import { gsap, MOTION_OK, useGSAP } from "./motion";
  */
 export function SceneChaos() {
   const root = useRef<HTMLElement>(null);
+  useCurtain(root);
 
   useGSAP(
     () => {

@@ -127,6 +127,24 @@ const config: Config = {
           "60%": { opacity: "1", transform: "translateY(0) scale(1)", boxShadow: "0 0 0 6px rgba(255,106,0,0)" },
           "100%": { boxShadow: "0 0 0 0 rgba(255,106,0,0)" },
         },
+        "accordion-down": {
+          from: { height: "0", opacity: "0" },
+          to: { height: "var(--radix-accordion-content-height)", opacity: "1" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)", opacity: "1" },
+          to: { height: "0", opacity: "0" },
+        },
+        breathe: {
+          "0%, 100%": { opacity: "0.55" },
+          "50%": { opacity: "1" },
+        },
+        "bag-bump": {
+          "0%": { transform: "scale(1)" },
+          "35%": { transform: "scale(1.06)" },
+          "70%": { transform: "scale(0.98)" },
+          "100%": { transform: "scale(1)" },
+        },
         shimmer: {
           from: { backgroundPosition: "-200% 0" },
           to: { backgroundPosition: "200% 0" },
@@ -143,6 +161,10 @@ const config: Config = {
         ring: "ring 1.8s cubic-bezier(0.16,1,0.3,1) infinite",
         "order-arrive": "order-arrive 900ms cubic-bezier(0.16,1,0.3,1) both",
         shimmer: "shimmer 1.6s linear infinite",
+        "accordion-down": "accordion-down 420ms cubic-bezier(0.16,1,0.3,1)",
+        "accordion-up": "accordion-up 300ms cubic-bezier(0.76,0,0.24,1)",
+        breathe: "breathe 6s ease-in-out infinite",
+        "bag-bump": "bag-bump 520ms cubic-bezier(0.34,1.56,0.64,1)",
       },
     },
   },

@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { AlertTriangle, Minus, Plus, ShoppingBag } from "lucide-react";
+import { useCurtain, useTilt } from "./fx";
 import { brl, gsap, MOTION_OK, useGSAP } from "./motion";
 
 const PANELS = [
@@ -28,6 +29,7 @@ const PANELS = [
  */
 export function SceneThreeScreens() {
   const root = useRef<HTMLElement>(null);
+  useCurtain(root);
 
   useGSAP(
     () => {
@@ -47,6 +49,13 @@ export function SceneThreeScreens() {
             invalidateOnRefresh: true,
           },
         });
+        // Mocks come alive as the track starts moving.
+        const live = gsap.timeline({ scrollTrigger: { trigger: root.current, start: "top 70%" } });
+        live
+          .from("[data-menu-item]", { opacity: 0, x: 24, duration: 0.7, ease: "expo.out", stagger: 0.12 })
+          .from("[data-bag]", { yPercent: 120, opacity: 0, duration: 0.7, ease: "back.out(1.6)" }, "-=0.3")
+          .from("[data-bar]", { scaleY: 0, transformOrigin: "bottom", duration: 0.9, ease: "expo.out", stagger: 0.06 }, 0.2)
+          .from("[data-stock-bar]", { scaleX: 0, transformOrigin: "left", duration: 1, ease: "expo.out", stagger: 0.1 }, 0.4);
       });
       return () => mm.revert();
     },
@@ -65,7 +74,7 @@ export function SceneThreeScreens() {
         <div className="mt-8 motion-reduce:overflow-x-auto sm:mt-12">
           <div data-track className="flex w-max gap-5 px-4 sm:gap-8 sm:px-8 lg:pl-[max(2rem,calc((100vw-1400px)/2+2rem))]">
             {PANELS.map((p, i) => (
-              <article
+              <TiltCard
                 key={p.title}
                 className="grid w-[86vw] max-w-[1040px] gap-4 rounded-3xl bg-white p-5 shadow-cream sm:p-8 md:w-[78vw] lg:w-[72vw] lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-10"
               >
@@ -79,13 +88,23 @@ export function SceneThreeScreens() {
                 <div className="order-1 max-sm:[zoom:0.7] lg:order-2" aria-hidden>
                   {i === 0 ? <MenuMock /> : i === 1 ? <DashboardMock /> : <StockMock />}
                 </div>
-              </article>
+              </TiltCard>
             ))}
             <div className="w-4 shrink-0 sm:w-8" />
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function TiltCard({ className, children }: { className: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useTilt(ref, 4);
+  return (
+    <article ref={ref} className={className}>
+      {children}
+    </article>
   );
 }
 
@@ -112,7 +131,7 @@ function MenuMock() {
       </div>
       <ul className="mt-3 space-y-2">
         {items.map((it, k) => (
-          <li key={it.name} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-surface p-2.5">
+          <li key={it.name} data-menu-item className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-surface p-2.5">
             <div className="h-11 w-11 shrink-0 rounded-lg bg-gradient-to-br from-[#5a3a22] to-[#2a1d14]" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium">{it.name}</p>
@@ -131,7 +150,7 @@ function MenuMock() {
           </li>
         ))}
       </ul>
-      <div className="mt-3 flex items-center justify-between rounded-xl bg-brand px-3.5 py-2.5 text-[13px] font-semibold text-white">
+      <div data-bag className="mt-3 flex items-center justify-between rounded-xl bg-brand px-3.5 py-2.5 text-[13px] font-semibold text-white">
         <span className="flex items-center gap-2">
           <ShoppingBag className="h-4 w-4" /> Ver sacola · 2
         </span>
@@ -161,7 +180,7 @@ function DashboardMock() {
         <p className="text-[11px] text-foreground-muted">Últimos 7 dias</p>
         <div className="mt-3 flex h-28 items-end gap-2">
           {bars.map((h, k) => (
-            <div key={k} className="flex-1 rounded-t-md bg-white/10" style={{ height: `${h}%` }}>
+            <div key={k} data-bar className="flex-1 rounded-t-md bg-white/10" style={{ height: `${h}%` }}>
               {k === bars.length - 1 ? <div className="h-full rounded-t-md bg-brand" /> : null}
             </div>
           ))}
@@ -192,7 +211,7 @@ function StockMock() {
               <span className={r.low ? "font-mono text-warning" : "font-mono text-foreground-muted"}>{r.qty} un</span>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-              <div className={r.low ? "h-full rounded-full bg-warning" : "h-full rounded-full bg-foreground/70"} style={{ width: `${(r.qty / r.max) * 100}%` }} />
+              <div data-stock-bar className={r.low ? "h-full rounded-full bg-warning" : "h-full rounded-full bg-foreground/70"} style={{ width: `${(r.qty / r.max) * 100}%` }} />
             </div>
           </li>
         ))}

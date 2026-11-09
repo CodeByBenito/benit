@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { salesWhatsAppHref } from "@/components/landing/content";
 import { SmoothScroll } from "@/components/landing/motion";
+import { ScrollProgress } from "@/components/landing/fx";
+import { SceneBand } from "@/components/landing/scene-band";
 import { SceneChaos } from "@/components/landing/scene-chaos";
 import { SceneClosing } from "@/components/landing/scene-closing";
 import { SceneHero } from "@/components/landing/scene-hero";
@@ -22,9 +24,11 @@ export default function LandingPage() {
 
   return (
     <SmoothScroll>
+      <ScrollProgress />
       <SiteHeader ctaHref={ctaHref} />
       <main>
         <SceneHero ctaHref={ctaHref} />
+        <SceneBand />
         <SceneChaos />
         <SceneOrderCrossing />
         <SceneThreeScreens />

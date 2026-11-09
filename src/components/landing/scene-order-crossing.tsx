@@ -67,6 +67,9 @@ export function SceneOrderCrossing() {
           .to({}, { duration: 0.5 })
           // → Confirmados + stock deduction
           .to(card, { x: () => pos(1).x, y: () => pos(1).y, duration: 1 })
+          // Lean into the move, settle on arrival.
+          .to(card, { rotate: -3.5, scale: 1.03, duration: 0.45, ease: "power2.out" }, "<")
+          .to(card, { rotate: 0, scale: 1, duration: 0.55, ease: "back.out(2.2)" }, "<0.45")
           .to(
             stockState,
             {
@@ -80,9 +83,15 @@ export function SceneOrderCrossing() {
           .to({}, { duration: 0.5 })
           // → Em preparo
           .to(card, { x: () => pos(2).x, y: () => pos(2).y, duration: 1 })
+          // Lean into the move, settle on arrival.
+          .to(card, { rotate: -3.5, scale: 1.03, duration: 0.45, ease: "power2.out" }, "<")
+          .to(card, { rotate: 0, scale: 1, duration: 0.55, ease: "back.out(2.2)" }, "<0.45")
           .to({}, { duration: 0.5 })
           // → Prontos + revenue + WhatsApp nudge
           .to(card, { x: () => pos(3).x, y: () => pos(3).y, duration: 1 })
+          // Lean into the move, settle on arrival.
+          .to(card, { rotate: -3.5, scale: 1.03, duration: 0.45, ease: "power2.out" }, "<")
+          .to(card, { rotate: 0, scale: 1, duration: 0.55, ease: "back.out(2.2)" }, "<0.45")
           .to(
             revenue,
             {
