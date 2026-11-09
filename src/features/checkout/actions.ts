@@ -245,3 +245,31 @@ export async function payWithCardAction(payload: unknown): Promise<ActionResult<
     return { success: false, error: message };
   }
 }
+
+export interface TrackedOrder {
+  order_number: number;
+  status: string;
+  payment_status: PaymentStatus;
+  payment_method: string | null;
+  payment_expires_at: string | null;
+  fulfillment_type: "DELIVERY" | "PICKUP" | "DINE_IN";
+  eta_minutes: number | null;
+  subtotal_cents: number;
+  discount_cents: number;
+  fee_cents: number;
+  total_cents: number;
+  created_at: string;
+  items: { name: string; quantity: number; total_cents: number; options: string[] }[];
+  timeline: { status: string; at: string }[];
+  pix: { qr_code: string | null; qr_code_base64: string | null; expires_at: string | null } | null;
+  mp_public_key: string | null;
+  store: { name: string; slug: string; whatsapp: string | null; logo_url: string | null };
+}
+
+/** Public, token-gated read of an order (no customer personal data). */
+export async function getTrackedOrderAction(publicToken: string): Promise<TrackedOrder | null> {
+  if (!/^[0-9a-f]{64}$/.test(publicToken)) return null;
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("get_public_order_by_token", { p_token: publicToken });
+  return (data as TrackedOrder | null) ?? null;
+}

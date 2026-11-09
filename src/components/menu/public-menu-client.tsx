@@ -1,807 +1,259 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Image as ImageIcon,
-  Loader2,
-  MapPin,
-  Minus,
-  Phone,
-  Plus,
-  ShoppingBag,
-  Trash2,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { formatCurrencyCents } from "@/lib/utils";
-import {
-  createOrderAction,
-  type CreatedOrderReceipt,
-} from "@/features/orders/actions";
-import type { FulfillmentType } from "@/types/domain.types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Clock, MapPin, MessageCircle, Plus, Search, ShoppingBag } from "lucide-react";
+import { WEEKDAY_SHORT } from "@/lib/labels";
+import { cn, formatCurrencyCents } from "@/lib/utils";
+import { CheckoutSheet } from "./public/checkout-sheet";
+import { ProductSheet } from "./public/product-sheet";
+import type { PublicCategory, PublicDeliveryZone, PublicProduct, PublicStoreInfo } from "./public/types";
+import { useBag } from "./public/use-bag";
 
-export interface PublicOptionItem {
-  id: string;
-  name: string;
-  price_cents: number;
-}
+export type { PublicCategory, PublicProduct, PublicStoreInfo, PublicDeliveryZone } from "./public/types";
 
-export interface PublicOptionGroup {
-  id: string;
-  name: string;
-  min_select: number;
-  max_select: number;
-  is_required: boolean;
-  options: PublicOptionItem[];
-}
-
-export interface PublicProduct {
-  id: string;
-  category_id: string | null;
-  name: string;
-  description: string | null;
-  price_cents: number;
-  image_url: string | null;
-  is_available: boolean;
-  in_stock: boolean;
-  option_groups: PublicOptionGroup[];
-}
-
-export interface PublicCategory {
-  id: string;
-  name: string;
-  description: string | null;
-}
-
-export interface PublicStoreInfo {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  logo_url: string | null;
-  banner_url: string | null;
-  phone: string | null;
-  whatsapp: string | null;
-  address: string | null;
-  is_open: boolean;
-}
-
-interface CartItem {
-  cartItemId: string;
-  product: PublicProduct;
-  quantity: number;
-  selectedOptions: PublicOptionItem[];
-  notes: string;
+function todayHours(store: PublicStoreInfo) {
+  const dow = new Date().getDay();
+  const slots = store.hours.filter((h) => h.weekday === dow);
+  if (!store.hours.length) return null;
+  if (!slots.length) return `Fechado hoje (${WEEKDAY_SHORT[dow]})`;
+  return slots.map((s) => `${s.opens_at}–${s.closes_at}`).join(" · ");
 }
 
 export function PublicMenuClient({
   store,
   categories,
   products,
+  zones,
 }: {
   store: PublicStoreInfo;
   categories: PublicCategory[];
   products: PublicProduct[];
+  zones: PublicDeliveryZone[];
 }) {
-  const [activeCategoryId, setActiveCategoryId] = useState<string>("ALL");
-  const [selectedProduct, setSelectedProduct] = useState<PublicProduct | null>(
-    null
-  );
-  const [modalQty, setModalQty] = useState(1);
-  const [modalSelectedOptions, setModalSelectedOptions] = useState<
-    Record<string, PublicOptionItem[]>
-  >({});
-  const [modalNotes, setModalNotes] = useState("");
-  const [modalError, setModalError] = useState<string | null>(null);
+  const bag = useBag(store.id);
+  const [selected, setSelected] = useState<PublicProduct | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeCat, setActiveCat] = useState<string | null>(null);
+  const navRef = useRef<HTMLDivElement>(null);
+  const accepting = store.accepting_now;
 
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
+  const sections = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const visible = products.filter((p) => !q || p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q));
+    const byCat = categories
+      .map((c) => ({ category: c, items: visible.filter((p) => p.category_id === c.id) }))
+      .filter((s) => s.items.length);
+    const orphans = visible.filter((p) => !p.category_id || !categories.some((c) => c.id === p.category_id));
+    if (orphans.length) byCat.push({ category: { id: "outros", name: "Outros", description: null }, items: orphans });
+    return byCat;
+  }, [products, categories, query]);
 
-  // Checkout Customer Fields
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [fulfillmentType, setFulfillmentType] =
-    useState<FulfillmentType>("PICKUP");
-  const [tableOrReference, setTableOrReference] = useState("");
-  const [orderNotes, setOrderNotes] = useState("");
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [confirmedReceipt, setConfirmedReceipt] =
-    useState<CreatedOrderReceipt | null>(null);
-
-  const [isPending, startTransition] = useTransition();
-
-  const visibleProducts = useMemo(() => {
-    if (activeCategoryId === "ALL") return products;
-    return products.filter((p) => p.category_id === activeCategoryId);
-  }, [products, activeCategoryId]);
-
-  const cartTotalCents = useMemo(() => {
-    return cart.reduce((acc, item) => {
-      const optionsSum = item.selectedOptions.reduce(
-        (s, o) => s + o.price_cents,
-        0
-      );
-      return acc + (item.product.price_cents + optionsSum) * item.quantity;
-    }, 0);
-  }, [cart]);
-
-  const cartCount = useMemo(
-    () => cart.reduce((acc, item) => acc + item.quantity, 0),
-    [cart]
-  );
-
-  function openProductConfigurator(product: PublicProduct) {
-    if (!product.is_available || !product.in_stock) return;
-    setSelectedProduct(product);
-    setModalQty(1);
-    setModalSelectedOptions({});
-    setModalNotes("");
-    setModalError(null);
-  }
-
-  function toggleOptionSelection(
-    group: PublicOptionGroup,
-    option: PublicOptionItem
-  ) {
-    const current = modalSelectedOptions[group.id] ?? [];
-    const exists = current.some((o) => o.id === option.id);
-
-    if (exists) {
-      setModalSelectedOptions({
-        ...modalSelectedOptions,
-        [group.id]: current.filter((o) => o.id !== option.id),
-      });
-    } else {
-      if (group.max_select === 1) {
-        setModalSelectedOptions({
-          ...modalSelectedOptions,
-          [group.id]: [option],
-        });
-      } else if (current.length < group.max_select) {
-        setModalSelectedOptions({
-          ...modalSelectedOptions,
-          [group.id]: [...current, option],
-        });
-      }
-    }
-  }
-
-  function handleAddToCart() {
-    if (!selectedProduct) return;
-
-    // Validate required option groups
-    for (const group of selectedProduct.option_groups) {
-      const chosen = modalSelectedOptions[group.id] ?? [];
-      if (group.is_required && chosen.length < Math.max(1, group.min_select)) {
-        setModalError(
-          `Selecione pelo menos ${Math.max(1, group.min_select)} opção em "${
-            group.name
-          }".`
-        );
-        return;
-      }
-    }
-
-    const flatOptions = Object.values(modalSelectedOptions).flat();
-    setCart((prev) => [
-      ...prev,
-      {
-        cartItemId: `${selectedProduct.id}-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 6)}`,
-        product: selectedProduct,
-        quantity: modalQty,
-        selectedOptions: flatOptions,
-        notes: modalNotes.trim(),
+  // Scrollspy for the sticky category nav.
+  useEffect(() => {
+    setActiveCat((prev) => prev ?? sections[0]?.category.id ?? null);
+    const els = sections.map((s) => document.getElementById(`cat-${s.category.id}`)).filter(Boolean) as HTMLElement[];
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (top) setActiveCat(top.target.id.replace("cat-", ""));
       },
-    ]);
-    setSelectedProduct(null);
-  }
+      { rootMargin: "-120px 0px -60% 0px" }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [sections]);
 
-  function handleSubmitOrder(e: React.FormEvent) {
-    e.preventDefault();
-    setCheckoutError(null);
+  useEffect(() => {
+    if (!activeCat || !navRef.current) return;
+    navRef.current.querySelector(`[data-cat="${activeCat}"]`)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [activeCat]);
 
-    if (!store.is_open) {
-      setCheckoutError(
-        "O estabelecimento está fechado para novos pedidos neste momento."
-      );
-      return;
-    }
-
-    const idempotencyKey = `pub-${store.id}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-
-    startTransition(async () => {
-      const res = await createOrderAction({
-        storeId: store.id,
-        source: "DIGITAL_MENU",
-        fulfillmentType,
-        customerName,
-        customerPhone,
-        tableOrReference: tableOrReference || undefined,
-        notes: orderNotes || undefined,
-        idempotencyKey,
-        items: cart.map((item) => ({
-          product_id: item.product.id,
-          quantity: item.quantity,
-          option_ids: item.selectedOptions.map((o) => o.id),
-          notes: item.notes || undefined,
-        })),
-      });
-
-      if (!res.success || !res.data) {
-        setCheckoutError(
-          res.error ?? "Não foi possível enviar o pedido. Tente novamente."
-        );
-      } else {
-        setConfirmedReceipt(res.data);
-        setCart([]);
-        setCartDrawerOpen(false);
-      }
-    });
-  }
+  const hours = todayHours(store);
+  const minFee = zones.length ? Math.min(...zones.map((z) => z.fee_cents)) : null;
 
   return (
-    <div className="min-h-screen bg-background pb-28 text-foreground">
-      {/* Store Banner / Header */}
-      <header className="border-b border-border bg-surface">
-        {store.banner_url && (
-          <div className="h-36 w-full overflow-hidden sm:h-48">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={store.banner_url}
-              alt={store.name}
-              className="h-full w-full object-cover opacity-80"
-            />
-          </div>
-        )}
-        <div className="mx-auto max-w-4xl px-4 py-6">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div className="flex items-start gap-4">
-              {store.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={store.logo_url}
-                  alt={store.name}
-                  className="h-16 w-16 rounded-2xl border border-border object-cover"
-                />
-              ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-brand/30 bg-brand/15 font-heading text-2xl font-extrabold text-brand">
-                  {store.name.slice(0, 1).toUpperCase()}
-                </div>
-              )}
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="font-heading text-2xl font-extrabold text-foreground">
-                    {store.name}
-                  </h1>
-                  <Badge variant={store.is_open ? "success" : "danger"}>
-                    {store.is_open ? "Aberto agora" : "Fechado no momento"}
-                  </Badge>
-                </div>
-                {store.description && (
-                  <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
-                    {store.description}
-                  </p>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-foreground-muted">
-                  {store.address && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5 text-brand" />
-                      {store.address}
-                    </span>
-                  )}
-                  {store.phone && (
-                    <span className="inline-flex items-center gap-1 tabular-nums">
-                      <Phone className="h-3.5 w-3.5 text-brand" />
-                      {store.phone}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+    <div className="min-h-screen bg-background pb-32">
+      {/* Cover */}
+      <header className="relative">
+        <div className="relative h-44 overflow-hidden sm:h-64">
+          {store.banner_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={store.banner_url} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div aria-hidden className="grain h-full w-full bg-[radial-gradient(ellipse_at_20%_0%,rgba(255,106,0,0.35),transparent_60%),linear-gradient(180deg,#1C1C1C,#101010)]" />
+          )}
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
         </div>
-
-        {/* Sticky Category Bar */}
-        <div className="sticky top-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
-          <div className="mx-auto flex max-w-4xl items-center gap-2 overflow-x-auto px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setActiveCategoryId("ALL")}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-                activeCategoryId === "ALL"
-                  ? "bg-brand text-white"
-                  : "bg-surface-card text-foreground-muted hover:text-foreground"
-              }`}
-            >
-              Todos
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setActiveCategoryId(cat.id)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-                  activeCategoryId === cat.id
-                    ? "bg-brand text-white"
-                    : "bg-surface-card text-foreground-muted hover:text-foreground"
-                }`}
-              >
-                {cat.name}
-              </button>
-            ))}
+        <div className="relative mx-auto -mt-14 max-w-3xl px-4 sm:-mt-16">
+          <div className="flex items-end gap-4">
+            {store.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={store.logo_url} alt={`Logo ${store.name}`} className="h-20 w-20 rounded-2xl border-4 border-background object-cover shadow-float sm:h-24 sm:w-24" />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-background bg-brand font-display text-3xl font-extrabold text-white shadow-float sm:h-24 sm:w-24">
+                {store.name.charAt(0)}
+              </div>
+            )}
           </div>
+          <h1 className="mt-4 font-display text-display-md font-extrabold">{store.name}</h1>
+          {store.description ? <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-foreground-muted">{store.description}</p> : null}
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <span className={cn("inline-flex items-center gap-2 font-medium", accepting ? "text-success" : "text-danger")}>
+              <span className={cn("h-2 w-2 rounded-full", accepting ? "bg-success" : "bg-danger")} />
+              {accepting ? "Aberto agora" : "Fechado no momento"}
+            </span>
+            {hours ? (
+              <span className="inline-flex items-center gap-1.5 text-foreground-muted">
+                <Clock className="h-3.5 w-3.5" /> {hours}
+              </span>
+            ) : null}
+            {store.fulfillment.delivery ? (
+              <span className="text-foreground-muted">
+                Entrega ~{store.default_eta_minutes} min{minFee !== null ? ` · a partir de ${formatCurrencyCents(minFee)}` : ""}
+              </span>
+            ) : null}
+            {store.min_order_cents ? <span className="text-foreground-muted">Mínimo {formatCurrencyCents(store.min_order_cents)}</span> : null}
+          </div>
+          {store.address || store.whatsapp ? (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-foreground-muted">
+              {store.address ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" /> {store.address}
+                </span>
+              ) : null}
+              {store.whatsapp ? (
+                <a
+                  href={`https://wa.me/${store.whatsapp.replace(/\D/g, "").replace(/^(?!55)(\d{10,11})$/, "55$1")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 hover:text-foreground"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> Falar com a loja
+                </a>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </header>
 
-      {/* Main Catalog */}
-      <main className="mx-auto max-w-4xl px-4 py-6">
-        {/* Order Confirmation Banner */}
-        {confirmedReceipt && (
-          <div className="mb-8 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-400" />
-                <div>
-                  <h2 className="font-heading text-lg font-bold text-foreground">
-                    Pedido #{confirmedReceipt.order_number} recebido com sucesso!
-                  </h2>
-                  <p className="mt-1 text-xs text-foreground-muted">
-                    Seu pedido já está na tela de operação de{" "}
-                    <span className="font-semibold text-foreground">
-                      {store.name}
-                    </span>{" "}
-                    com valor total de{" "}
-                    <span className="font-bold text-emerald-400 tabular-nums">
-                      {formatCurrencyCents(confirmedReceipt.total_cents)}
-                    </span>
-                    .
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmedReceipt(null)}
+      {/* Sticky nav */}
+      <div className="sticky top-0 z-30 mt-6 border-b border-border bg-background/85 backdrop-blur-xl">
+        <div className="mx-auto max-w-3xl px-4">
+          <div className="relative pt-3">
+            <Search className="pointer-events-none absolute left-3 top-[calc(50%+6px)] h-4 w-4 -translate-y-1/2 text-foreground-subtle" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar no cardápio"
+              aria-label="Buscar no cardápio"
+              className="h-10 w-full rounded-full border border-border bg-surface pl-9 pr-4 text-sm placeholder:text-foreground-subtle focus-visible:border-brand/60 focus-visible:outline-none"
+            />
+          </div>
+          <nav ref={navRef} aria-label="Categorias" className="-mx-4 flex gap-1 overflow-x-auto px-4 py-3 [scrollbar-width:none]">
+            {sections.map((s) => (
+              <a
+                key={s.category.id}
+                data-cat={s.category.id}
+                href={`#cat-${s.category.id}`}
+                className={cn(
+                  "shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors",
+                  activeCat === s.category.id ? "bg-foreground font-medium text-background" : "text-foreground-muted hover:text-foreground"
+                )}
               >
-                Fechar
-              </Button>
-            </div>
-          </div>
-        )}
+                {s.category.name}
+              </a>
+            ))}
+          </nav>
+        </div>
+      </div>
 
-        {visibleProducts.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-surface-card p-12 text-center">
-            <ShoppingBag className="mx-auto h-10 w-10 text-foreground-muted" />
-            <h2 className="mt-3 font-heading text-base font-bold text-foreground">
-              Nenhum produto disponível nesta categoria
+      {!accepting ? (
+        <div className="mx-auto mt-6 max-w-3xl px-4">
+          <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            A loja não está recebendo pedidos agora. Você pode ver o cardápio e voltar no horário de funcionamento.
+          </p>
+        </div>
+      ) : null}
+
+      <main className="mx-auto max-w-3xl px-4">
+        {sections.length === 0 ? (
+          <p className="py-20 text-center text-foreground-muted">{query ? "Nada encontrado com esse nome." : "Cardápio em preparação."}</p>
+        ) : null}
+        {sections.map((s) => (
+          <section key={s.category.id} id={`cat-${s.category.id}`} className="scroll-mt-32 pt-10" aria-labelledby={`h-${s.category.id}`}>
+            <h2 id={`h-${s.category.id}`} className="font-display text-xl font-extrabold tracking-tight">
+              {s.category.name}
             </h2>
-            <p className="mt-1 text-xs text-foreground-muted">
-              Selecione outra categoria acima ou volte em instantes.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {visibleProducts.map((product) => {
-              const canOrder =
-                store.is_open && product.is_available && product.in_stock;
-              return (
-                <div
-                  key={product.id}
-                  onClick={() => canOrder && openProductConfigurator(product)}
-                  className={`flex justify-between gap-4 rounded-2xl border border-border bg-surface-card p-4 transition-all ${
-                    canOrder
-                      ? "cursor-pointer hover:border-brand/50"
-                      : "opacity-60"
-                  }`}
-                >
-                  <div className="flex flex-1 flex-col justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-heading text-sm font-bold text-foreground">
-                          {product.name}
-                        </h3>
-                        {(!product.is_available || !product.in_stock) && (
-                          <Badge variant="danger">Esgotado</Badge>
-                        )}
-                      </div>
-                      {product.description && (
-                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-foreground-muted">
-                          {product.description}
+            {s.category.description ? <p className="mt-1 text-sm text-foreground-muted">{s.category.description}</p> : null}
+            <ul className="mt-4 divide-y divide-border">
+              {s.items.map((p) => {
+                const soldOut = !p.is_available || !p.in_stock;
+                const inBag = bag.items.filter((i) => i.productId === p.id).reduce((n, i) => n + i.quantity, 0);
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(p)}
+                      disabled={soldOut}
+                      className="group flex w-full gap-4 py-4 text-left disabled:cursor-not-allowed"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className={cn("font-medium", soldOut && "text-foreground-muted")}>
+                          {inBag ? <span className="mr-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 font-mono text-[11px] text-white">{inBag}</span> : null}
+                          {p.name}
                         </p>
-                      )}
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between">
-                      <span className="font-heading text-base font-extrabold text-brand tabular-nums">
-                        {formatCurrencyCents(product.price_cents)}
-                      </span>
-                      {canOrder && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-brand/15 px-2.5 py-1 text-xs font-semibold text-brand">
-                          <Plus className="h-3.5 w-3.5" />
-                          Adicionar
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface">
-                    {product.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <ImageIcon className="h-6 w-6 text-foreground-muted" />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                        {p.description ? <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-foreground-muted">{p.description}</p> : null}
+                        <p className="mt-2 font-mono text-sm">{soldOut ? <span className="text-foreground-subtle">Esgotado</span> : formatCurrencyCents(p.price_cents)}</p>
+                      </div>
+                      <div className="relative shrink-0">
+                        {p.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.image_url} alt="" loading="lazy" className={cn("h-24 w-24 rounded-xl object-cover sm:h-28 sm:w-28", soldOut && "grayscale")} />
+                        ) : (
+                          <div aria-hidden className="h-24 w-24 rounded-xl bg-gradient-to-br from-surface-elevated to-surface sm:h-28 sm:w-28" />
+                        )}
+                        {!soldOut ? (
+                          <span className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full border-4 border-background bg-foreground text-background transition-transform duration-base ease-spring group-hover:scale-110">
+                            <Plus className="h-4 w-4" />
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+        <p className="py-16 text-center text-xs text-foreground-subtle">
+          Pedidos com <span className="font-display font-extrabold tracking-tight text-foreground-muted">benit</span>
+        </p>
       </main>
 
-      {/* Floating Bottom Cart Bar */}
-      {cart.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 p-4 backdrop-blur">
-          <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
-            <div>
-              <p className="text-xs text-foreground-muted">
-                {cartCount} {cartCount === 1 ? "item" : "itens"} na sacola
-              </p>
-              <p className="font-heading text-lg font-extrabold text-foreground tabular-nums">
-                {formatCurrencyCents(cartTotalCents)}
-              </p>
-            </div>
-            <Button size="lg" onClick={() => setCartDrawerOpen(true)}>
-              <ShoppingBag className="h-4 w-4" />
-              <span>Ver Sacola e Finalizar</span>
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Floating bag */}
+      <div
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-40 p-4 transition-transform duration-slow ease-out-expo sm:p-6",
+          bag.count > 0 ? "translate-y-0" : "translate-y-[140%]"
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setCheckoutOpen(true)}
+          className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between rounded-full bg-brand px-6 text-white shadow-glow transition-colors hover:bg-brand-hover"
+        >
+          <span className="flex items-center gap-3 font-semibold">
+            <ShoppingBag className="h-5 w-5" /> Ver sacola
+            <span className="rounded-full bg-white/20 px-2 py-0.5 font-mono text-xs">{bag.count}</span>
+          </span>
+          <span className="font-mono font-medium">{formatCurrencyCents(bag.subtotalCents)}</span>
+        </button>
+      </div>
 
-      {/* Product Configurator Modal */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="w-full max-w-lg rounded-t-2xl border border-border bg-surface-card p-6 shadow-2xl sm:rounded-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
-              <div>
-                <h2 className="font-heading text-lg font-bold text-foreground">
-                  {selectedProduct.name}
-                </h2>
-                <p className="mt-0.5 font-heading text-sm font-bold text-brand tabular-nums">
-                  {formatCurrencyCents(selectedProduct.price_cents)}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedProduct(null)}
-                className="text-foreground-muted hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {selectedProduct.description && (
-              <p className="mt-3 text-xs leading-relaxed text-foreground-muted">
-                {selectedProduct.description}
-              </p>
-            )}
-
-            {modalError && (
-              <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{modalError}</span>
-              </div>
-            )}
-
-            {/* Option Groups */}
-            <div className="mt-4 space-y-4">
-              {selectedProduct.option_groups.map((group) => {
-                const chosen = modalSelectedOptions[group.id] ?? [];
-                return (
-                  <div
-                    key={group.id}
-                    className="rounded-xl border border-border bg-surface p-3.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-bold text-foreground">
-                          {group.name}
-                        </p>
-                        <p className="text-[11px] text-foreground-muted">
-                          Escolha até {group.max_select}
-                        </p>
-                      </div>
-                      {group.is_required && (
-                        <Badge variant="default">Obrigatório</Badge>
-                      )}
-                    </div>
-
-                    <div className="mt-2.5 space-y-2">
-                      {group.options.map((opt) => {
-                        const isChecked = chosen.some((o) => o.id === opt.id);
-                        return (
-                          <label
-                            key={opt.id}
-                            onClick={() => toggleOptionSelection(group, opt)}
-                            className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-xs transition-colors ${
-                              isChecked
-                                ? "border-brand bg-brand/15 text-foreground"
-                                : "border-border bg-surface-card text-foreground-muted"
-                            }`}
-                          >
-                            <span>{opt.name}</span>
-                            <span className="font-semibold text-foreground tabular-nums">
-                              {opt.price_cents > 0
-                                ? `+ ${formatCurrencyCents(opt.price_cents)}`
-                                : "Grátis"}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-foreground">
-                  Observações do item (opcional)
-                </label>
-                <Input
-                  value={modalNotes}
-                  onChange={(e) => setModalNotes(e.target.value)}
-                  placeholder="Ex: Sem cebola, maionese à parte"
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-between gap-4 border-t border-border pt-4">
-              <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-1.5">
-                <button
-                  type="button"
-                  onClick={() => setModalQty(Math.max(1, modalQty - 1))}
-                  className="text-foreground-muted hover:text-foreground"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="w-6 text-center text-sm font-bold tabular-nums">
-                  {modalQty}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setModalQty(modalQty + 1)}
-                  className="text-foreground-muted hover:text-foreground"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-
-              <Button className="flex-1" onClick={handleAddToCart}>
-                Adicionar à Sacola •{" "}
-                <span className="tabular-nums">
-                  {formatCurrencyCents(
-                    (selectedProduct.price_cents +
-                      Object.values(modalSelectedOptions)
-                        .flat()
-                        .reduce((s, o) => s + o.price_cents, 0)) *
-                      modalQty
-                  )}
-                </span>
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Shopping Cart & Checkout Drawer */}
-      {cartDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-sm">
-          <div className="flex h-full w-full max-w-md flex-col border-l border-border bg-surface-card p-6 shadow-2xl overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-border pb-4">
-              <h2 className="font-heading text-lg font-bold text-foreground">
-                Sua Sacola ({cartCount})
-              </h2>
-              <button
-                type="button"
-                onClick={() => setCartDrawerOpen(false)}
-                className="text-foreground-muted hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Cart Items */}
-            <div className="mt-4 space-y-3">
-              {cart.map((item) => {
-                const unitCents =
-                  item.product.price_cents +
-                  item.selectedOptions.reduce((s, o) => s + o.price_cents, 0);
-                return (
-                  <div
-                    key={item.cartItemId}
-                    className="rounded-xl border border-border bg-surface p-3.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-bold text-foreground">
-                          {item.quantity}x {item.product.name}
-                        </p>
-                        {item.selectedOptions.length > 0 && (
-                          <p className="mt-0.5 text-[11px] text-foreground-muted">
-                            +{" "}
-                            {item.selectedOptions
-                              .map((o) => o.name)
-                              .join(", ")}
-                          </p>
-                        )}
-                        {item.notes && (
-                          <p className="mt-0.5 text-[11px] italic text-brand">
-                            Obs: {item.notes}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-foreground tabular-nums">
-                          {formatCurrencyCents(unitCents * item.quantity)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCart((prev) =>
-                              prev.filter(
-                                (c) => c.cartItemId !== item.cartItemId
-                              )
-                            )
-                          }
-                          className="text-foreground-muted hover:text-red-400"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Customer & Fulfillment Form */}
-            <form onSubmit={handleSubmitOrder} className="mt-6 space-y-4">
-              <div className="border-t border-border pt-4">
-                <h3 className="font-heading text-sm font-bold text-foreground">
-                  Seus Dados para Atendimento
-                </h3>
-              </div>
-
-              {checkoutError && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{checkoutError}</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    { key: "PICKUP", label: "Retirada" },
-                    { key: "DELIVERY", label: "Delivery" },
-                    { key: "DINE_IN", label: "Mesa / Local" },
-                  ] as const
-                ).map((mode) => (
-                  <button
-                    key={mode.key}
-                    type="button"
-                    onClick={() => setFulfillmentType(mode.key)}
-                    className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
-                      fulfillmentType === mode.key
-                        ? "border-brand bg-brand/15 text-brand"
-                        : "border-border bg-surface text-foreground-muted"
-                    }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-foreground">
-                  Seu Nome
-                </label>
-                <Input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Ex: Robson Silva"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-foreground">
-                  WhatsApp com DDD
-                </label>
-                <Input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="(11) 99999-9999"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-foreground">
-                  {fulfillmentType === "DINE_IN"
-                    ? "Número da Mesa"
-                    : fulfillmentType === "DELIVERY"
-                    ? "Endereço Completo de Entrega"
-                    : "Identificação / Observação de Retirada"}
-                </label>
-                <Input
-                  value={tableOrReference}
-                  onChange={(e) => setTableOrReference(e.target.value)}
-                  placeholder={
-                    fulfillmentType === "DINE_IN"
-                      ? "Ex: Mesa 4"
-                      : fulfillmentType === "DELIVERY"
-                      ? "Rua, Número, Complemento, Bairro"
-                      : "Ex: Retiro em 20 minutos"
-                  }
-                  required={fulfillmentType !== "PICKUP"}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-foreground">
-                  Observações gerais do pedido (opcional)
-                </label>
-                <Input
-                  value={orderNotes}
-                  onChange={(e) => setOrderNotes(e.target.value)}
-                  placeholder="Ex: Preciso de troco para R$ 100"
-                />
-              </div>
-
-              <div className="rounded-xl border border-border bg-surface p-4">
-                <div className="flex items-center justify-between text-sm font-bold text-foreground">
-                  <span>Total do Pedido</span>
-                  <span className="font-heading text-lg text-brand tabular-nums">
-                    {formatCurrencyCents(cartTotalCents)}
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full"
-                disabled={isPending || cart.length === 0}
-              >
-                {isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Enviando pedido...</span>
-                  </>
-                ) : (
-                  <span>Confirmar e Enviar Pedido</span>
-                )}
-              </Button>
-            </form>
-          </div>
-        </div>
-      )}
+      <ProductSheet product={selected} onClose={() => setSelected(null)} onAdd={bag.add} disabled={!accepting} />
+      <CheckoutSheet open={checkoutOpen} onOpenChange={setCheckoutOpen} store={store} zones={zones} bag={bag} />
     </div>
   );
 }
-

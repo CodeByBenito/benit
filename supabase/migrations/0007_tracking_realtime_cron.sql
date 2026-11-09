@@ -20,6 +20,7 @@ DECLARE
     v_items JSONB;
     v_timeline JSONB;
     v_pix JSONB;
+    v_public_key TEXT;
 BEGIN
     IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN
         RETURN NULL;
@@ -30,7 +31,11 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT name, slug, whatsapp, logo_url INTO v_store FROM public.stores WHERE id = v_order.store_id;
+    SELECT name, slug, whatsapp, logo_url, online_payment_enabled INTO v_store FROM public.stores WHERE id = v_order.store_id;
+    -- MP public key is public by design (used by the card Brick in the browser).
+    IF v_order.status = 'AWAITING_PAYMENT' AND v_store.online_payment_enabled THEN
+        SELECT a.public_key INTO v_public_key FROM public.store_payment_accounts a WHERE a.store_id = v_order.store_id AND a.status = 'ACTIVE';
+    END IF;
 
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
         'name', oi.product_name_snapshot,
@@ -68,6 +73,7 @@ BEGIN
         'items', v_items,
         'timeline', v_timeline,
         'pix', v_pix,
+        'mp_public_key', v_public_key,
         'store', jsonb_build_object('name', v_store.name, 'slug', v_store.slug, 'whatsapp', v_store.whatsapp, 'logo_url', v_store.logo_url)
     );
 END;
