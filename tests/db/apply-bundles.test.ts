@@ -31,4 +31,9 @@ it("SQL Editor bundles apply cleanly in two runs", async () => {
     `SELECT COUNT(*)::int AS n FROM pg_tables WHERE schemaname = 'public'`
   );
   expect(rows[0].n).toBe(22);
+  // Step 2 is re-runnable; step 1 refuses to run over an upgraded database.
+  await expect(db.exec(load("passo-2-checkout-pagamentos.sql"))).resolves.toBeTruthy();
+  await expect(db.exec(load("passo-1-base.sql"))).rejects.toThrow(/já está atualizado/);
+  const legacy = await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM pg_proc WHERE proname = 'create_order_atomic' AND pronargs = 12`);
+  expect(legacy.rows[0].n).toBe(0);
 }, 120_000);

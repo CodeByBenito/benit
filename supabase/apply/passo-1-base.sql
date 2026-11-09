@@ -1,6 +1,14 @@
 -- BENIT · PASSO 1 de 2 · migrations 0001 a 0004
 -- Cole TUDO no SQL Editor do Supabase e clique em Run. Depois rode o passo 2.
-
+-- Rode UMA vez: se o banco já tiver o passo 2, este script para sem alterar nada
+-- (rodar de novo recriaria a versão antiga e insegura de create_order_atomic).
+DO $guard$
+BEGIN
+    IF to_regclass('public.coupons') IS NOT NULL THEN
+        RAISE EXCEPTION 'BENIT: o banco já está atualizado (passo 2 aplicado). Não rode o passo 1 de novo.';
+    END IF;
+END
+$guard$;
 
 -- >>>>>>>>>> 0001_initial_schema.sql
 -- =============================================================================
