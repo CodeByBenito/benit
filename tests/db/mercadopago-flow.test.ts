@@ -31,7 +31,11 @@ const afterTasks: Promise<unknown>[] = [];
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {}, delete: () => {} }) }));
+const requestHeaders = new Headers();
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {}, delete: () => {} }),
+  headers: async () => requestHeaders,
+}));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw Object.assign(new Error("NEXT_REDIRECT"), { url });
@@ -428,5 +432,30 @@ describe("when the store's token can no longer be renewed", () => {
     expect(after.status).toBe("ACTIVE");
     expect(after.access_token_enc).not.toBe(before.access_token_enc);
     expect(after.access_token_enc).toMatch(/^v1\./);
+  });
+});
+
+describe("public checkout: per-visitor limit in the app", () => {
+  it("one address cannot hammer the checkout; another visitor is unaffected", async () => {
+    const { PUBLIC_LIMITS, RATE_LIMIT_MESSAGE } = await import("@/lib/rate-limit");
+    asCustomer();
+    const quote = () => app.checkout.quoteCheckoutAction({ slug: fx.storeSlug, items: [{ product_id: fx.sodaId, quantity: 4 }], fulfillmentType: "PICKUP" });
+
+    requestHeaders.set("x-forwarded-for", "203.0.113.9, 10.0.0.1");
+    // Fill the window directly instead of making 120 calls.
+    const { bucketKey } = await import("@/lib/rate-limit");
+    await db.query(`INSERT INTO public.rate_limit_buckets (bucket_key, hits) VALUES ($1, $2)`, [bucketKey("quote", "203.0.113.9", fx.storeSlug), PUBLIC_LIMITS.quote.limit]);
+    expect(await quote()).toEqual({ success: false, error: RATE_LIMIT_MESSAGE });
+
+    requestHeaders.set("x-forwarded-for", "198.51.100.20");
+    expect((await quote()).success).toBe(true);
+
+    // No address at all (local development): the limiter stays out of the way.
+    requestHeaders.delete("x-forwarded-for");
+    expect((await quote()).success).toBe(true);
+
+    // Only hashes are stored, never the address.
+    const { rows } = await db.query<{ bucket_key: string }>(`SELECT bucket_key FROM public.rate_limit_buckets`);
+    expect(rows.every((r) => !r.bucket_key.includes("203.0.113.9") && !r.bucket_key.includes("198.51.100.20"))).toBe(true);
   });
 });
