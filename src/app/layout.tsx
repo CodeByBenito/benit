@@ -1,15 +1,30 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "@/components/ui/toast";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteUrl } from "@/lib/site";
 import { fontDisplay, fontMono, fontSans } from "./fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Resolves every relative metadata URL (canonical, Open Graph images).
+  metadataBase: siteUrl(),
   title: {
-    default: "BENIT — Sua operação. Sob controle.",
-    template: "%s | BENIT",
+    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Pedidos em tempo real, cardápio digital com pagamento online, entrega por bairro e estoque automático para negócios de alimentação.",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {

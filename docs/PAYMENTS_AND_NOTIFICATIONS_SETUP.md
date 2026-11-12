@@ -60,10 +60,10 @@ Sem `RESEND_API_KEY`, os e-mails são simplesmente ignorados. Nada quebra.
 
 `vercel.json` agenda:
 
-- `/api/cron/expire` a cada 5 minutos. É a reserva caso o pg_cron não esteja disponível. Atenção: no plano Hobby da Vercel os crons só podem rodar uma vez por dia; nesse caso, use o pg_cron ou outro agendador.
+- `/api/cron/expire` uma vez por dia. É só uma reserva: a expiração de pedidos roda a cada minuto no banco, pelo pg_cron. O plano Hobby da Vercel não aceita cron mais frequente que diário.
 - `/api/cron/mp-refresh` diariamente, para renovar os tokens do Mercado Pago.
 
-Defina `CRON_SECRET` no projeto da Vercel.
+Defina `CRON_SECRET` no projeto da Vercel. O passo a passo completo do deploy está em `docs/DEPLOY_VERCEL.md`.
 
 ## 6. Conferência antes de abrir para clientes
 
