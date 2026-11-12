@@ -1,32 +1,19 @@
+import { CustomersClient } from "@/components/customers/customers-client";
 import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
-import { CustomersClient } from "@/components/customers/customers-client";
-import type { Customer, Order } from "@/types/domain.types";
+import type { Customer } from "@/types/domain.types";
 
 export default async function CustomersPage() {
   const tenant = await requireArea("customers");
   const supabase = await createClient();
 
-  const [{ data: customersData }, { data: ordersData }] = await Promise.all([
-    supabase
-      .from("customers")
-      .select("*")
-      .eq("store_id", tenant.store.id)
-      .order("last_order_at", { ascending: false, nullsFirst: false }),
-    supabase
-      .from("orders")
-      .select("*")
-      .eq("store_id", tenant.store.id)
-      .order("created_at", { ascending: false })
-      .limit(250),
-  ]);
+  // Order history is loaded per customer, when its panel opens.
+  const { data } = await supabase
+    .from("customers")
+    .select("*")
+    .eq("store_id", tenant.store.id)
+    .order("last_order_at", { ascending: false, nullsFirst: false })
+    .limit(1000);
 
-  return (
-    <CustomersClient
-      storeName={tenant.store.name}
-      customers={(customersData ?? []) as Customer[]}
-      orders={(ordersData ?? []) as Order[]}
-    />
-  );
+  return <CustomersClient storeId={tenant.store.id} storeName={tenant.store.name} customers={(data ?? []) as Customer[]} />;
 }
-
