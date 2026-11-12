@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { stockAdjustmentSchema } from "@/lib/validations";
 import type { ActionResult } from "@/features/auth/actions";
+import type { StockMovement } from "@/types/domain.types";
 
 export async function adjustProductStockAction(
   payload: unknown
@@ -46,3 +47,23 @@ export async function adjustProductStockAction(
   return { success: true };
 }
 
+
+/** Last movements of one product (RLS limits it to members of the store). */
+export async function getProductStockHistoryAction(
+  storeId: string,
+  productId: string
+): Promise<ActionResult<StockMovement[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("stock_movements")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    return { success: false, error: "Não foi possível carregar o histórico." };
+  }
+  return { success: true, data: (data ?? []) as StockMovement[] };
+}
