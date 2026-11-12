@@ -6,14 +6,14 @@ import { StoreTab } from "@/components/settings/store-tab";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getPaymentAccountStatus } from "@/features/payments/actions";
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import type { BusinessHour, Coupon, DeliveryZone } from "@/types/domain.types";
 
 const TABS = ["loja", "payments", "delivery", "hours", "coupons"] as const;
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string; mp?: string }> }) {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("settings");
   const { tab, mp } = await searchParams;
   const supabase = await createClient();
   const storeId = tenant.store.id;

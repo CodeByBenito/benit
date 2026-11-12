@@ -304,6 +304,8 @@ export interface TenantContext {
   };
   organization: Organization;
   membership: Membership;
+  /** Role that applies in the active store (organization-wide or store-scoped). */
+  role: MembershipRole;
   store: Store;
   stores: Store[];
 }

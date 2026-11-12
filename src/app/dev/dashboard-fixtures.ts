@@ -38,6 +38,7 @@ export const fixtureTenant: TenantContext = {
   user: { id: "u", email: "dona@smashdavila.com", full_name: "Carla Mendes" },
   organization: { id: "org", name: "Smash Group", slug: "smash", document_number: null, plan_tier: "FREE_PILOT", subscription_status: "ACTIVE", max_stores: 1, created_by: "u", created_at: iso(1), updated_at: iso(1) },
   membership: { id: "m", organization_id: "org", store_id: null, user_id: "u", role: "OWNER", created_at: iso(1), updated_at: iso(1) },
+  role: "OWNER",
   store: fixtureStoreRow,
   stores: [fixtureStoreRow],
 };

@@ -1,5 +1,7 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { canAccessArea, effectiveRole, homePath, type DashboardArea } from "@/lib/permissions/roles";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import type {
@@ -15,7 +17,7 @@ export const ACTIVE_STORE_COOKIE = "benit_active_store_id";
  * Fetches the authenticated user's TenantContext (Organization, Membership, Active Store).
  * Returns null if the user has not completed onboarding yet.
  */
-export async function getTenantContext(): Promise<TenantContext | null> {
+export const getTenantContext = cache(async function getTenantContext(): Promise<TenantContext | null> {
   if (!isSupabaseConfigured()) {
     return null;
   }
@@ -102,10 +104,11 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     },
     organization: organization as Organization,
     membership: primaryMembership,
+    role: effectiveRole(typedMemberships, organization.id, activeStore.id) ?? primaryMembership.role,
     store: activeStore,
     stores: stores as Store[],
   };
-}
+});
 
 /**
  * Requires an active TenantContext or redirects to /onboarding
@@ -114,6 +117,19 @@ export async function requireTenantContext(): Promise<TenantContext> {
   const ctx = await getTenantContext();
   if (!ctx) {
     redirect("/onboarding");
+  }
+  return ctx;
+}
+
+/**
+ * Tenant context for one panel area. A role that does not see the area is
+ * sent to its own first screen (kitchen staff opening /settings land on the
+ * board). The database enforces the real permissions; this keeps the UI honest.
+ */
+export async function requireArea(area: DashboardArea): Promise<TenantContext> {
+  const ctx = await requireTenantContext();
+  if (!canAccessArea(ctx.role, area)) {
+    redirect(homePath(ctx.role));
   }
   return ctx;
 }

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { getPaymentAccountStatus } from "@/features/payments/actions";
 import { FULFILLMENT_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { cn, formatCurrencyCents } from "@/lib/utils";
 import type { Order, Product } from "@/types/domain.types";
@@ -18,7 +18,7 @@ function dayKey(d: Date, tz: string) {
 }
 
 export default async function DashboardPage() {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("overview");
   const supabase = await createClient();
   const store = tenant.store;
   const tz = store.timezone || "America/Sao_Paulo";

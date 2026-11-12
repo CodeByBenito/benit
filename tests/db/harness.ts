@@ -23,7 +23,9 @@ CREATE SCHEMA realtime;
 CREATE TABLE auth.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT,
-  raw_user_meta_data JSONB DEFAULT '{}'::jsonb
+  raw_user_meta_data JSONB DEFAULT '{}'::jsonb,
+  invited_at TIMESTAMPTZ,
+  last_sign_in_at TIMESTAMPTZ
 );
 
 CREATE FUNCTION auth.uid() RETURNS UUID LANGUAGE sql STABLE AS $$

@@ -1,10 +1,10 @@
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { CustomersClient } from "@/components/customers/customers-client";
 import type { Customer, Order } from "@/types/domain.types";
 
 export default async function CustomersPage() {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("customers");
   const supabase = await createClient();
 
   const [{ data: customersData }, { data: ordersData }] = await Promise.all([

@@ -1,10 +1,10 @@
 import { OrdersBoardClient } from "@/components/orders/orders-board-client";
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import type { Order, OrderItem, OrderItemOption, OrderStatusHistory, Product } from "@/types/domain.types";
 
 export default async function OrdersPage() {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("orders");
   const supabase = await createClient();
   const storeId = tenant.store.id;
 
