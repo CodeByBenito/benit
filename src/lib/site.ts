@@ -28,6 +28,11 @@ export function absoluteUrl(path = "/"): string {
   return new URL(path, siteUrl()).toString();
 }
 
+/** Where every e-mail link lands, carrying the destination after sign-in. */
+export function authCallbackUrl(next: string): string {
+  return absoluteUrl(`/auth/callback?next=${encodeURIComponent(next)}`);
+}
+
 export const SITE_NAME = "BENIT";
 export const SITE_TAGLINE = "Sua operação. Sob controle.";
 export const SITE_DESCRIPTION =

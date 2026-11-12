@@ -310,3 +310,18 @@ export interface TenantContext {
   stores: Store[];
 }
 
+
+/** Row of public.list_team_members(). */
+export interface TeamMember {
+  membership_id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  role: MembershipRole;
+  store_id: string | null;
+  store_name: string | null;
+  /** Invited by e-mail and has not signed in yet. */
+  pending: boolean;
+  is_self: boolean;
+  created_at: string;
+}

@@ -15,6 +15,7 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validations";
+import { authCallbackUrl } from "@/lib/site";
 import { safeNextPath, slugify } from "@/lib/utils";
 import { ACTIVE_STORE_COOKIE } from "@/lib/permissions/tenant";
 
@@ -23,12 +24,6 @@ export type ActionResult<T = unknown> = {
   error?: string;
   data?: T;
 };
-
-/** Absolute URL of the auth callback, carrying the post-login destination. */
-function authCallbackUrl(next: string): string {
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
-  return `${appUrl}/auth/callback?next=${encodeURIComponent(next)}`;
-}
 
 export async function loginAction(formData: FormData): Promise<ActionResult> {
   if (!isSupabaseConfigured()) {

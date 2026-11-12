@@ -1,4 +1,4 @@
-import type { Coupon, DeliveryZone, Order, Store, TenantContext } from "@/types/domain.types";
+import type { Coupon, DeliveryZone, Order, Store, TeamMember, TenantContext } from "@/types/domain.types";
 import { fixtureStore, fixtureZones } from "./fixtures";
 
 /** Dashboard design-review fixtures (development only). */
@@ -109,4 +109,26 @@ export const fixtureZonesRows: DeliveryZone[] = fixtureZones.map((z, i) => ({ ..
 export const fixtureCoupons: Coupon[] = [
   { id: "cp1", store_id: fixtureStore.id, code: "BEMVINDO10", description: null, kind: "PERCENT", value: 10, max_discount_cents: 1500, min_order_cents: 3000, starts_at: null, ends_at: null, usage_limit: 200, per_customer_limit: 1, used_count: 37, is_active: true, created_at: iso(5000) },
   { id: "cp2", store_id: fixtureStore.id, code: "FRETEOFF", description: null, kind: "FIXED", value: 500, max_discount_cents: null, min_order_cents: 0, starts_at: null, ends_at: iso(60), usage_limit: null, per_customer_limit: null, used_count: 12, is_active: false, created_at: iso(9000) },
+];
+
+const member = (n: number, full_name: string, email: string, role: TeamMember["role"], extra: Partial<TeamMember> = {}): TeamMember => ({
+  membership_id: `00000000-0000-4000-8000-00000000010${n}`,
+  user_id: `00000000-0000-4000-8000-00000000020${n}`,
+  full_name,
+  email,
+  role,
+  store_id: role === "OWNER" ? null : fixtureStore.id,
+  store_name: role === "OWNER" ? null : fixtureStore.name,
+  pending: false,
+  is_self: false,
+  created_at: iso(9000 - n * 600),
+  ...extra,
+});
+
+export const fixtureTeam: TeamMember[] = [
+  member(1, "Carla Mendes", "dona@smashdavila.com", "OWNER", { is_self: true }),
+  member(2, "Tiago Nunes", "tiago@smashdavila.com", "MANAGER"),
+  member(3, "Bia Rocha", "bia@smashdavila.com", "ATTENDANT"),
+  member(4, "Diego Ramos", "diego@smashdavila.com", "KITCHEN"),
+  member(5, "", "novo.cozinheiro@exemplo.com", "KITCHEN", { pending: true }),
 ];

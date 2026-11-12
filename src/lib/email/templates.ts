@@ -53,3 +53,14 @@ export function newOrderEmail(input: {
   const text = `Novo pedido #${input.orderNumber} de ${input.customerName} — ${formatCurrencyCents(input.totalCents)}. ${input.appUrl}/orders`;
   return { subject: `Novo pedido #${input.orderNumber} · ${formatCurrencyCents(input.totalCents)}`, html, text };
 }
+
+export function teamAddedEmail(input: { organizationName: string; roleLabel: string; invitedBy: string; loginUrl: string }) {
+  const html = layout(
+    `Você entrou na equipe de ${input.organizationName}.`,
+    `<p style="margin:0 0 12px"><strong style="color:#F3F3F0">${escape(input.invitedBy)}</strong> adicionou você como <strong style="color:#F3F3F0">${escape(input.roleLabel)}</strong>.</p>
+     <p style="margin:0">Entre com o e-mail e a senha que você já usa no BENIT.</p>`,
+    { label: "Entrar no painel", href: input.loginUrl }
+  );
+  const text = `${input.invitedBy} adicionou você à equipe de ${input.organizationName} como ${input.roleLabel}. Entre em: ${input.loginUrl}`;
+  return { subject: `Você entrou na equipe de ${input.organizationName}`, html, text };
+}

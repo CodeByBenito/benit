@@ -347,3 +347,27 @@ export const cardPaymentSchema = z.object({
   identificationType: z.string().max(10).optional(),
   identificationNumber: z.string().max(20).optional(),
 });
+
+// --- Team -------------------------------------------------------------------
+
+const invitableRole = z.enum(["MANAGER", "ATTENDANT", "KITCHEN"], {
+  errorMap: () => ({ message: "Escolha Gerente, Atendente ou Cozinha." }),
+});
+
+export const inviteTeamMemberSchema = z.object({
+  organizationId: z.string().uuid(),
+  email: z.string().trim().toLowerCase().email("Informe um e-mail válido.").max(254),
+  fullName: z.string().trim().max(80).optional().or(z.literal("")),
+  role: invitableRole,
+  /** null = every store of the organization. */
+  storeId: z.string().uuid().nullable(),
+});
+
+export const updateTeamMemberRoleSchema = z.object({
+  membershipId: z.string().uuid(),
+  role: invitableRole,
+});
+
+export const teamMembershipSchema = z.object({
+  membershipId: z.string().uuid(),
+});
