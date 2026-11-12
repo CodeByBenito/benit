@@ -76,10 +76,15 @@ export const storeSettingsSchema = z.object({
   phone: z.string().trim().optional().nullable(),
   whatsapp: z.string().trim().optional().nullable(),
   address: z.string().trim().max(250).optional().nullable(),
-  logoUrl: z.string().trim().url().optional().nullable().or(z.literal("")),
-  bannerUrl: z.string().trim().url().optional().nullable().or(z.literal("")),
   isOpen: z.boolean(),
   isPublished: z.boolean(),
+});
+
+/** Logo/cover are set by upload only: the client sends a storage path, never a URL. */
+export const storeBrandImageSchema = z.object({
+  storeId: z.string().uuid(),
+  kind: z.enum(["logo", "banner"]),
+  path: z.string().trim().min(1).max(200).nullable(),
 });
 
 export const categorySchema = z.object({

@@ -1,6 +1,7 @@
 import "server-only";
 import { ImageResponse } from "next/og";
 import { BRAND, OG_SIZE, Wordmark, brandFonts } from "@/lib/brand/image";
+import { shareVariantPath } from "@/lib/images/brand-assets";
 import { isOwnStorageUrl } from "@/lib/supabase/public";
 
 export interface StoreOgInput {
@@ -12,11 +13,16 @@ export interface StoreOgInput {
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
-/** Fetches a store image (own storage bucket only) as a data URL; null on any problem. */
+/**
+ * Fetches a store image (own storage bucket only) as a data URL; null on any
+ * problem. WebP originals are swapped for their JPEG twin, which is the one
+ * next/og can decode.
+ */
 async function loadImage(url: string | null): Promise<string | null> {
   if (!isOwnStorageUrl(url)) return null;
+  const target = shareVariantPath(url) ?? url;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(target, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) return null;
     const type = res.headers.get("content-type")?.split(";")[0] ?? "";
     if (!type.startsWith("image/")) return null;
@@ -43,13 +49,16 @@ function layout(store: StoreOgInput, logo: string | null, banner: string | null)
     <div style={{ display: "flex", position: "relative", width: "100%", height: "100%", background: BRAND.bg, color: BRAND.text, fontFamily: "Inter" }}>
       {banner ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={banner} alt="" width={OG_SIZE.width} height={OG_SIZE.height} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        <img src={banner} alt="" width={OG_SIZE.width} height={OG_SIZE.height} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" }} />
       ) : null}
       <div
         style={{
           display: "flex",
           position: "absolute",
-          inset: 0,
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
           backgroundImage: banner
             ? "linear-gradient(90deg, rgba(16,16,16,0.96) 0%, rgba(16,16,16,0.86) 55%, rgba(16,16,16,0.5) 100%)"
             : "radial-gradient(circle at 100% 0%, rgba(255,106,0,0.2), rgba(255,106,0,0) 55%)",
@@ -125,9 +134,9 @@ function layout(store: StoreOgInput, logo: string | null, banner: string | null)
  * Share image for a store menu. Renders eagerly so an image the renderer
  * cannot decode falls back to the text-only version instead of a broken card.
  */
-export async function renderStoreOg(store: StoreOgInput): Promise<Response> {
+export async function renderStoreOg(store: StoreOgInput, preloaded?: { logo: string | null; banner: string | null }): Promise<Response> {
   const fonts = await brandFonts();
-  const [logo, banner] = await Promise.all([loadImage(store.logoUrl), loadImage(store.bannerUrl)]);
+  const [logo, banner] = preloaded ? [preloaded.logo, preloaded.banner] : await Promise.all([loadImage(store.logoUrl), loadImage(store.bannerUrl)]);
   const attempts: [string | null, string | null][] = logo || banner ? [[logo, banner], [logo, null], [null, null]] : [[null, null]];
 
   let lastError: unknown;

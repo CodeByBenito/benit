@@ -7,6 +7,7 @@ import { HoursTab } from "@/components/settings/hours-tab";
 import { PaymentsTab } from "@/components/settings/payments-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fixtureCoupons, fixtureTenant, fixtureZonesRows } from "../../dashboard-fixtures";
+import { StoreTabPreview } from "./store-tab-preview";
 
 /** Development-only design preview of the settings tabs. */
 export default async function DevSettings({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -22,11 +23,15 @@ export default async function DevSettings({ searchParams }: { searchParams: Prom
         <PageHeader title="Configurações" description={`Identidade, pagamentos, entrega, horários e cupons de ${store.name}.`} />
         <Tabs defaultValue={tab} className="mt-8">
           <TabsList>
+            <TabsTrigger value="loja">Loja</TabsTrigger>
             <TabsTrigger value="payments">Pagamentos</TabsTrigger>
             <TabsTrigger value="delivery">Entrega</TabsTrigger>
             <TabsTrigger value="hours">Horários</TabsTrigger>
             <TabsTrigger value="coupons">Cupons</TabsTrigger>
           </TabsList>
+          <TabsContent value="loja" className="mt-8">
+            <StoreTabPreview store={store} />
+          </TabsContent>
           <TabsContent value="payments" className="mt-8">
             <PaymentsTab store={store} account={{ connected: false, status: null, liveMode: null, providerUserId: null, configured: true }} canManage />
           </TabsContent>

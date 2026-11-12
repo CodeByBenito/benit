@@ -2,7 +2,7 @@ import { CouponsTab } from "@/components/settings/coupons-tab";
 import { DeliveryTab } from "@/components/settings/delivery-tab";
 import { HoursTab } from "@/components/settings/hours-tab";
 import { PaymentsTab } from "@/components/settings/payments-tab";
-import { StoreSettingsForm } from "@/components/layout/store-settings-form";
+import { StoreTab } from "@/components/settings/store-tab";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getPaymentAccountStatus } from "@/features/payments/actions";
@@ -40,7 +40,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <TabsTrigger value="coupons">Cupons</TabsTrigger>
         </TabsList>
         <TabsContent value="loja" className="mt-8">
-          <StoreSettingsForm store={tenant.store} />
+          <StoreTab store={tenant.store} canManage={Boolean(canManage)} />
         </TabsContent>
         <TabsContent value="payments" className="mt-8">
           <PaymentsTab store={tenant.store} account={account} canManage={Boolean(canManage)} mpResult={mp} />
