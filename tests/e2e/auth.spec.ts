@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 /**
  * Auth screens. The E2E server runs without Supabase credentials, so these

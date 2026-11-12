@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 /** The sidebar is a drawer on mobile. */
 async function panelNav(page: Page) {

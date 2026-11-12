@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from "@playwright/test";
+import type { Locator } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 const productNames = (section: Locator) => section.getByRole("button", { name: /^Editar (?!categoria)/ }).evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")!.replace("Editar ", "")));
 

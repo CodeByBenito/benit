@@ -109,3 +109,17 @@ BENIT enforces security across four distinct layers:
 
 - `next` is pinned to the latest 15.1 patch. Keep it on the newest patch of its line: the framework has had critical advisories (middleware bypass, RSC).
 - Brand image routes (`icon`, `apple-icon`, `opengraph-image`) run on the Edge runtime with fonts bundled as assets.
+
+
+## 12. Supabase Security Advisor Baseline
+
+Run the advisor after every migration. With migrations 0001–0011 applied (checked on 2026-11-12) the expected result is:
+
+| Finding | Level | Why it is expected |
+| :--- | :--- | :--- |
+| RLS enabled, no policy: `oauth_states`, `store_payment_accounts`, `webhook_events`, `rate_limit_buckets` | INFO | On purpose. With no policy only the service role reaches them. |
+| `anon` can execute `SECURITY DEFINER`: `get_public_menu_by_slug`, `quote_checkout`, `create_order_atomic`, `get_public_order_by_token` | WARN | These four are the public surface of the menu and the checkout. Each returns a controlled projection or validates everything itself. |
+| `authenticated` can execute `SECURITY DEFINER` (17 functions: RLS helpers, order and stock RPCs, onboarding, team RPCs) | WARN | Each one checks the caller (`has_store_access`, `can_manage_store`, `is_org_owner`) before doing anything. |
+| Leaked password protection disabled | WARN | A dashboard setting, not SQL. Turn it on (see `docs/DEPLOY_VERCEL.md`). |
+
+Anything outside this list is new and must be explained or fixed. In particular, no function added after 0008 may be executable by `anon`, and `consume_rate_limit` must stay service-role only.

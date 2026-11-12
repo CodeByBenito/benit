@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 test.describe("identity and SEO", () => {
   test.beforeEach(({}, info) => {

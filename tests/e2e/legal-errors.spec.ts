@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 test.describe("legal pages", () => {
   test("privacy policy says what is collected, why, for how long and who to contact", async ({ page }) => {

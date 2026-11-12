@@ -76,6 +76,7 @@ Em **Authentication → Email Templates**, traduza os textos e troque o link de 
 ### 3.4 Outros ajustes
 
 - **Authentication → Providers → Email:** mantenha *Confirm email* ligado e defina o tamanho mínimo de senha como **8** (o mesmo que o app valida).
+- **Authentication → Providers → Email → Password security:** ative *Leaked password protection*. O advisor de segurança do Supabase acusa quando está desligada. (Recurso do plano Pro.)
 - **Authentication → Rate Limits:** com SMTP próprio, suba o limite de e-mails por hora conforme o volume esperado.
 
 ## 4. Domínios

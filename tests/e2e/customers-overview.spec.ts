@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 const names = (page: Page) => page.getByRole("button", { name: /^Ver / }).evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")!.replace("Ver ", "")));
 

@@ -12,6 +12,9 @@ const CI = Boolean(process.env.CI);
 export default defineConfig({
   testDir: "tests/e2e",
   timeout: 60_000,
+  // Following a link makes the dev server compile the next route on demand,
+  // which can take several seconds the first time.
+  expect: { timeout: 15_000 },
   fullyParallel: true,
   forbidOnly: CI,
   // The dev server compiles each route on first hit; on a cold CI machine that
