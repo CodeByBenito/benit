@@ -14,6 +14,9 @@
     "verify:scroll": "node scripts/verify-scroll.mjs --url http://localhost:3100 --out verification"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@gsap/react": "^2.1.2",
     "@mercadopago/sdk-react": "^0.0.24",
     "@radix-ui/react-accordion": "^1.2.3",

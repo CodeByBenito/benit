@@ -371,3 +371,11 @@ export const updateTeamMemberRoleSchema = z.object({
 export const teamMembershipSchema = z.object({
   membershipId: z.string().uuid(),
 });
+
+// --- Catalog ----------------------------------------------------------------
+
+export const reorderCatalogSchema = z.object({
+  storeId: z.string().uuid(),
+  kind: z.enum(["category", "product"]),
+  ids: z.array(z.string().uuid()).min(1).max(500),
+});
