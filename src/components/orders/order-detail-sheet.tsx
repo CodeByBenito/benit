@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Copy, Loader2, MapPin, MessageCircle, Phone, Ticket, X } from "lucide-react";
+import { ArrowUpRight, Copy, Loader2, MapPin, MessageCircle, Phone, Printer, Ticket, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +10,7 @@ import { FULFILLMENT_LABEL, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL, PAYMENT_ST
 import { buildCustomerStatusMessage, buildWhatsAppLink, trackingUrl } from "@/lib/notifications/whatsapp-templates";
 import { cn, formatCurrencyCents, formatPhoneBR } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/types/domain.types";
+import { KitchenTicket } from "./kitchen-ticket";
 import { NEXT_ACTION } from "./order-meta";
 
 export function OrderDetailSheet({
@@ -117,7 +118,16 @@ export function OrderDetailSheet({
 
           {/* Items */}
           <section>
-            <h3 className="eyebrow mb-3">Itens</h3>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="eyebrow">Itens</h3>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 rounded-md text-xs text-foreground-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+              >
+                <Printer className="h-3.5 w-3.5" /> Imprimir comanda
+              </button>
+            </div>
             <ul className="space-y-3">
               {order.items?.map((i) => (
                 <li key={i.id} className="flex justify-between gap-4 text-sm">
@@ -220,6 +230,7 @@ export function OrderDetailSheet({
           </div>
         ) : null}
       </SheetContent>
+      <KitchenTicket order={order} storeName={storeName} />
     </Sheet>
   );
 }

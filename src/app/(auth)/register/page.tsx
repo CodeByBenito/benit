@@ -73,6 +73,17 @@ export default function RegisterPage() {
           {pending ? "Criando conta…" : "Criar conta"}
           {!pending ? <ArrowRight className="h-4 w-4" /> : null}
         </Button>
+        <p className="text-center text-xs leading-relaxed text-foreground-subtle">
+          Ao criar a conta, você concorda com os{" "}
+          <Link href="/termos" className="text-foreground-muted underline underline-offset-4 hover:text-foreground">
+            Termos de uso
+          </Link>{" "}
+          e a{" "}
+          <Link href="/privacidade" className="text-foreground-muted underline underline-offset-4 hover:text-foreground">
+            Política de privacidade
+          </Link>
+          .
+        </p>
       </form>
     </AuthShell>
   );

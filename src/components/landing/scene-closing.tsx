@@ -64,6 +64,8 @@ export function SceneClosing({ ctaHref }: { ctaHref: string }) {
             <Link href="/login" className="hover:text-foreground">Entrar</Link>
             <Link href="/register" className="hover:text-foreground">Criar conta</Link>
             <a href="#duvidas" className="hover:text-foreground">Dúvidas</a>
+            <Link href="/termos" className="hover:text-foreground">Termos</Link>
+            <Link href="/privacidade" className="hover:text-foreground">Privacidade</Link>
           </nav>
           <p className="text-xs text-foreground-subtle">© {new Date().getFullYear()} BENIT</p>
         </footer>

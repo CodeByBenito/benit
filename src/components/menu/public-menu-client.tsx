@@ -339,6 +339,10 @@ export function PublicMenuClient({
         ))}
         <p className="py-16 text-center text-xs text-foreground-subtle">
           Pedidos com <span className="font-display font-extrabold tracking-tight text-foreground-muted">benit</span>
+          <span aria-hidden> · </span>
+          <a href="/privacidade" className="underline underline-offset-4 hover:text-foreground-muted">
+            Privacidade
+          </a>
         </p>
       </main>
 
