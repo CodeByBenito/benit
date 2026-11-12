@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type Announcements, type DragEndEvent, type ScreenReaderInstructions, type UniqueIdentifier } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { EyeOff, FolderPlus, GripVertical, ImageIcon, Loader2, Pencil, Plus, Search, Trash2, UtensilsCrossed } from "lucide-react";
@@ -31,6 +31,23 @@ interface MenuManagerClientProps {
 
 type Availability = "ALL" | "AVAILABLE" | "PAUSED";
 const UNCATEGORIZED = "uncategorized";
+
+type DragAccessibility = { announcements: Announcements; screenReaderInstructions: ScreenReaderInstructions };
+
+/** Screen-reader texts for dragging, in Portuguese and with names instead of ids. */
+function dragAccessibility(label: (id: UniqueIdentifier) => string): DragAccessibility {
+  return {
+    screenReaderInstructions: { draggable: "Para reordenar, pressione espaço para pegar, use as setas para mover e espaço de novo para soltar. Esc cancela." },
+    announcements: {
+      onDragStart: ({ active }) => `Você pegou ${label(active.id)}.`,
+      // Nothing is announced while the item is still over its own place, so
+      // "Você pegou…" is not replaced the instant the drag starts.
+      onDragOver: ({ active, over }) => (over && over.id !== active.id ? `${label(active.id)} está na posição de ${label(over.id)}.` : undefined),
+      onDragEnd: ({ active, over }) => (over && over.id !== active.id ? `${label(active.id)} foi para a posição de ${label(over.id)}.` : `${label(active.id)} voltou para a posição original.`),
+      onDragCancel: ({ active }) => `Movimento cancelado. ${label(active.id)} voltou para a posição original.`,
+    },
+  };
+}
 
 const bySort = <T extends { sort_order: number; created_at: string }>(a: T, b: T) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
 
@@ -65,6 +82,11 @@ export function MenuManagerClient({ storeId, storeSlug, categories: initialCateg
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+
+  const accessibility = useMemo(() => {
+    const names = new Map<UniqueIdentifier, string>([...categories.map((c) => [c.id, c.name] as const), ...products.map((p) => [p.id, p.name] as const)]);
+    return dragAccessibility((id) => names.get(id) ?? "item");
+  }, [categories, products]);
 
   const filtering = query.trim() !== "" || availability !== "ALL";
   const visible = useMemo(() => {
@@ -284,7 +306,7 @@ export function MenuManagerClient({ storeId, storeSlug, categories: initialCateg
           {sections.length === 0 ? (
             <EmptyState title="Nenhum produto encontrado" description="Ajuste a busca ou o filtro." />
           ) : (
-            <DndContext id={`${dndId}-cats`} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onCategoryDragEnd}>
+            <DndContext id={`${dndId}-cats`} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onCategoryDragEnd} accessibility={accessibility}>
               <SortableContext items={sections.filter((s) => s.category).map((s) => s.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-5">
                   {sections.map((section) => (
@@ -295,6 +317,7 @@ export function MenuManagerClient({ storeId, storeSlug, categories: initialCateg
                       products={section.products}
                       sortable={!filtering}
                       sensors={sensors}
+                      accessibility={accessibility}
                       dndId={`${dndId}-${section.id}`}
                       onProductDragEnd={(e) => onProductDragEnd(section.id, e)}
                       onToggleCategory={toggleCategory}
@@ -374,6 +397,7 @@ function CategorySection({
   products,
   sortable,
   sensors,
+  accessibility,
   dndId,
   onProductDragEnd,
   onToggleCategory,
@@ -388,6 +412,7 @@ function CategorySection({
   products: Product[];
   sortable: boolean;
   sensors: ReturnType<typeof useSensors>;
+  accessibility: DragAccessibility;
   dndId: string;
   onProductDragEnd: (event: DragEndEvent) => void;
   onToggleCategory: (category: Category, next: boolean) => void;
@@ -453,7 +478,7 @@ function CategorySection({
         {products.length === 0 ? (
           <p className="px-3 py-6 text-center text-sm text-foreground-subtle">Nenhum produto nesta categoria.</p>
         ) : (
-          <DndContext id={dndId} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onProductDragEnd}>
+          <DndContext id={dndId} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onProductDragEnd} accessibility={accessibility}>
             <SortableContext items={products.map((p) => p.id)} strategy={verticalListSortingStrategy}>
               <ul className="space-y-1.5">
                 {products.map((p) => (

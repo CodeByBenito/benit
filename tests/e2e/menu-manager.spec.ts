@@ -1,7 +1,13 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./helpers";
 
 const productNames = (section: Locator) => section.getByRole("button", { name: /^Editar (?!categoria)/ }).evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")!.replace("Editar ", "")));
+
+/**
+ * Waits for the screen-reader announcement of a drag step. Each key press is
+ * only sent after the previous step was announced, as a person would do.
+ */
+const announced = (page: Page, text: string) => expect(page.locator('[id^="DndLiveRegion"]', { hasText: text })).toHaveCount(1);
 
 test.describe("menu manager (fixture)", () => {
   test.beforeEach(async ({ page }) => {
@@ -32,8 +38,11 @@ test.describe("menu manager (fixture)", () => {
     const handle = burgers.getByRole("button", { name: "Reordenar Smash duplo" });
     await handle.focus();
     await page.keyboard.press("Space");
+    await announced(page, "Você pegou Smash duplo.");
     await page.keyboard.press("ArrowDown");
+    await announced(page, "Smash duplo está na posição de Smash simples.");
     await page.keyboard.press("Space");
+    await announced(page, "Smash duplo foi para a posição de Smash simples.");
     await expect.poll(() => productNames(burgers)).toEqual(["Smash simples", "Smash duplo", "Veggie de grão-de-bico"]);
   });
 
@@ -41,8 +50,11 @@ test.describe("menu manager (fixture)", () => {
     const handle = page.getByRole("button", { name: "Reordenar categoria Burgers" });
     await handle.focus();
     await page.keyboard.press("Space");
+    await announced(page, "Você pegou Burgers.");
     await page.keyboard.press("ArrowDown");
+    await announced(page, "Burgers está na posição de Porções.");
     await page.keyboard.press("Space");
+    await announced(page, "Burgers foi para a posição de Porções.");
     await expect
       .poll(() => page.getByRole("region").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")).filter((n) => ["Burgers", "Porções"].includes(n ?? ""))))
       .toEqual(["Porções", "Burgers"]);
