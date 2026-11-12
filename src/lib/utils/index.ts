@@ -103,3 +103,15 @@ export function formatElapsedMinutes(isoDate: string): string {
   return `${days}d`;
 }
 
+
+/**
+ * Sanitizes a post-login redirect target. Only same-origin relative paths are
+ * allowed ("/dashboard"); anything else (absolute URLs, "//host", backslashes)
+ * falls back, so an auth link can never bounce the user to another site.
+ */
+export function safeNextPath(next: string | null | undefined, fallback = "/dashboard"): string {
+  if (!next) return fallback;
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return fallback;
+  if (/[\u0000-\u001f]/.test(next)) return fallback;
+  return next;
+}

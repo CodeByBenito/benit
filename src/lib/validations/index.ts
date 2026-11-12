@@ -14,12 +14,26 @@ export const registerSchema = z.object({
   phone: z.string().trim().optional(),
   password: z
     .string()
-    .min(6, "A senha deve ter pelo menos 6 caracteres."),
+    .min(8, "A senha deve ter pelo menos 8 caracteres.")
+    .max(72, "A senha deve ter no máximo 72 caracteres."),
 });
 
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().email("Informe um e-mail válido."),
 });
+
+export const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "A senha deve ter pelo menos 8 caracteres.")
+      .max(72, "A senha deve ter no máximo 72 caracteres."),
+    confirmPassword: z.string(),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "As senhas não conferem.",
+  });
 
 export const onboardingSchema = z.object({
   organizationName: z

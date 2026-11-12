@@ -12,7 +12,27 @@ const PROTECTED_PREFIXES = [
   "/onboarding",
 ];
 
-const AUTH_PREFIXES = ["/login", "/register", "/forgot-password"];
+const GUEST_ONLY_PREFIXES = ["/login", "/register", "/forgot-password"];
+
+/**
+ * E-mail link landings. Always reachable, signed in or not: /auth/callback
+ * creates the session and /reset-password runs with the recovery session, so
+ * neither may be treated as a guest-only or a protected route.
+ */
+const OPEN_AUTH_PREFIXES = ["/auth", "/reset-password"];
+
+const matches = (pathname: string, prefixes: string[]) =>
+  prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+
+export type RouteKind = "protected" | "guest-only" | "open";
+
+/** Pure route classification, unit-tested in tests/auth.test.ts. */
+export function routeKind(pathname: string): RouteKind {
+  if (matches(pathname, OPEN_AUTH_PREFIXES)) return "open";
+  if (matches(pathname, PROTECTED_PREFIXES)) return "protected";
+  if (matches(pathname, GUEST_ONLY_PREFIXES)) return "guest-only";
+  return "open";
+}
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -57,28 +77,22 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  const kind = routeKind(pathname);
 
-  const isProtected = PROTECTED_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-
-  if (!user && isProtected) {
+  if (!user && kind === "protected") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
-  const isAuthRoute = AUTH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-
-  if (user && isAuthRoute) {
+  if (user && kind === "guest-only") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
   return supabaseResponse;
 }
-
