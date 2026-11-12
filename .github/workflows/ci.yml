@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch or PR cancels the run in progress.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, tests, build and E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A push to a branch that has an open PR would run twice; keep the PR run.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # No secrets on purpose: the suite runs without Supabase or Mercado Pago.
+      # Database rules run on an embedded Postgres (PGlite), Mercado Pago on the
+      # local stub, and the browser tests on the /dev fixture routes.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit, database and payment-flow tests
+        run: npm test
+
+      - name: Production build
+        run: npx next build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

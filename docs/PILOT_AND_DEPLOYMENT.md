@@ -1,54 +1,18 @@
-# BENIT — Guia de Implantação (Deploy) & Operação Piloto
+# BENIT — Roteiro de piloto
 
-Este guia descreve o passo a passo para colocar o **BENIT** em produção na **Vercel + Supabase** e conduzir a validação com 2 a 3 estabelecimentos pilotos (Fase 6).
+O passo a passo de implantação mudou de lugar:
 
----
+- **Banco de dados:** `README.md`, seção "Banco de dados" (três passos em `supabase/apply/`).
+- **Deploy:** `docs/DEPLOY_VERCEL.md`.
+- **Pagamentos e e-mail:** `docs/PAYMENTS_AND_NOTIFICATIONS_SETUP.md`.
 
-## 1. Configuração do Banco de Dados no Supabase
+## Roteiro de validação com um estabelecimento piloto
 
-1. Crie um novo projeto no [Supabase Dashboard](https://supabase.com/dashboard).
-2. Abra o **SQL Editor** e execute, na ordem exata:
-   - `supabase/migrations/0001_initial_schema.sql`
-   - `supabase/migrations/0002_rls_policies.sql`
-   - `supabase/migrations/0003_atomic_rpcs.sql`
-   - *(Opcional para validar invariantes)*: `supabase/tests/verify_rls_and_invariants.sql`
-3. Em **Authentication -> Providers -> Email**:
-   - Para agilizar o onboarding dos estabelecimentos pilotos, você pode desativar temporariamente *"Confirm email"* (ou configurar seu provedor SMTP customizado).
-4. Em **Project Settings -> API**, copie:
-   - `Project URL` (`NEXT_PUBLIC_SUPABASE_URL`)
-   - `anon public` key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`)
-
----
-
-## 2. Deploy na Vercel
-
-1. Conecte o repositório GitHub `https://github.com/CodeByBenito/benit.git` à sua conta na **Vercel**.
-2. Configure as **Environment Variables** no painel da Vercel:
-   - `NEXT_PUBLIC_SUPABASE_URL`: URL do seu projeto Supabase
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Chave pública `anon` do seu projeto Supabase
-   - `NEXT_PUBLIC_APP_URL`: URL de produção (ex: `https://benit.app` ou `https://benit.vercel.app`)
-3. Clique em **Deploy**.
-
----
-
-## 3. Roteiro de Validação e Operação Piloto (Checklist Fase 6)
-
-Para cada estabelecimento piloto (ex: Hamburgueria, Pizzaria ou Cafeteria):
-
-1. **Cadastro e Onboarding (`/register` -> `/onboarding`):**
-   - Crie a conta do proprietário.
-   - Cadastre o nome da empresa, nome da loja, WhatsApp e slug do cardápio (ex: `/menu/benit-burger`).
-2. **Estruturação do Cardápio (`/menu-manager`):**
-   - Crie 3 a 5 categorias ordenadas.
-   - Cadastre os produtos com foto, preço, estoque inicial, alerta de estoque mínimo e grupos de adicionais.
-3. **Teste do Cardápio Público (`/menu/[slug]`):**
-   - Abra o link público pelo celular.
-   - Adicione itens com adicionais à sacola e envie um pedido de teste.
-4. **Operação do Quadro de Pedidos (`/orders`):**
-   - Verifique a chegada em tempo real na coluna **NOVOS**.
-   - Clique em **Confirmar Pedido** e valide que o estoque foi deduzido na **Central de Estoque (`/inventory`)**.
-   - Avance pelos estágios **EM PREPARO -> PRONTOS -> CONCLUÍDO**.
-   - Teste também um pedido manual no balcão e um cancelamento para confirmar o estorno automático no histórico de estoque.
-5. **Isolamento Multi-Tenant:**
-   - Confirme que a Loja Piloto A visualiza exclusivamente seus próprios produtos, pedidos, clientes e estoque, sem qualquer acesso aos dados da Loja Piloto B.
-
+1. **Cadastro e onboarding** (`/register` → e-mail de confirmação → `/onboarding`): nome da loja, WhatsApp e endereço do cardápio.
+2. **Identidade** (Configurações → Loja): enviar logo e capa, conferir o cardápio público.
+3. **Cardápio** (`/menu-manager`): criar 3 a 5 categorias, cadastrar produtos com foto, preço, estoque e adicionais, arrastar para ordenar.
+4. **Entrega, horários e pagamentos** (Configurações): bairros com taxa, horários da semana, formas de pagamento; conectar o Mercado Pago se for usar Pix e cartão online.
+5. **Equipe** (Configurações → Equipe): convidar um atendente e alguém da cozinha e conferir o que cada um vê.
+6. **Pedido de ponta a ponta:** pedir pelo celular em `/menu/<slug>`, ver chegar em **Novos**, confirmar, acompanhar a baixa em **Estoque**, avançar até **Concluído** e conferir a página de acompanhamento do cliente.
+7. **Balcão e cancelamento:** lançar um pedido manual, cancelar um pedido confirmado e conferir a volta do estoque.
+8. **Isolamento:** com duas lojas piloto, confirmar que uma não enxerga produtos, pedidos, clientes nem estoque da outra.
