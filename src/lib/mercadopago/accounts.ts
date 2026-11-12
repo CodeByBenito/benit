@@ -29,6 +29,14 @@ export async function saveStoreAccount(storeId: string, token: MpTokenResponse, 
   if (error) throw new Error(error.message);
 }
 
+/** The store has no usable Mercado Pago account (never connected, or disconnected). */
+export class PaymentAccountMissingError extends Error {
+  constructor() {
+    super("Loja sem conta Mercado Pago conectada.");
+    this.name = "PaymentAccountMissingError";
+  }
+}
+
 interface AccountRow {
   store_id: string;
   provider_user_id: string;
@@ -79,7 +87,7 @@ export async function getStoreAccessToken(storeId: string): Promise<string> {
     .eq("store_id", storeId)
     .maybeSingle<AccountRow>();
   if (error) throw new Error(error.message);
-  if (!data || data.status === "DISCONNECTED") throw new Error("Loja sem conta Mercado Pago conectada.");
+  if (!data || data.status === "DISCONNECTED") throw new PaymentAccountMissingError();
 
   const expiresAt = data.expires_at ? new Date(data.expires_at).getTime() : 0;
   if (expiresAt - Date.now() < REFRESH_WINDOW_MS) {

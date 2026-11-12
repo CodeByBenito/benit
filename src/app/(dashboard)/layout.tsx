@@ -1,6 +1,8 @@
+import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { getPaymentAccountStatus } from "@/features/payments/actions";
+import { canManageStore } from "@/lib/permissions/roles";
 import { requireTenantContext } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
-import { DashboardShell } from "@/components/layout/dashboard-shell";
 
 // Per-user, per-tenant data: never prerender.
 export const dynamic = "force-dynamic";
@@ -13,8 +15,8 @@ export default async function DashboardLayout({
   const tenant = await requireTenantContext();
   const supabase = await createClient();
 
-  // Fetch live operational badge counts for sidebar
-  const [{ count: newOrdersCount }, { data: stockProducts }] =
+  // Live badge counts for the sidebar, plus the payment health for whoever can fix it.
+  const [{ count: newOrdersCount }, { data: stockProducts }, account] =
     await Promise.all([
       supabase
         .from("orders")
@@ -27,6 +29,7 @@ export default async function DashboardLayout({
         .eq("store_id", tenant.store.id)
         .eq("is_archived", false)
         .eq("track_stock", true),
+      canManageStore(tenant.role) ? getPaymentAccountStatus(tenant.store.id) : null,
     ]);
 
   const lowStockCount = (stockProducts ?? []).filter(
@@ -38,9 +41,9 @@ export default async function DashboardLayout({
       tenant={tenant}
       newOrdersCount={newOrdersCount ?? 0}
       lowStockCount={lowStockCount}
+      paymentIssue={account?.status === "REFRESH_FAILED"}
     >
       {children}
     </DashboardShell>
   );
 }
-

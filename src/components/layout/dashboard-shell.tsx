@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { ArrowUpRight, Boxes, ClipboardList, LayoutDashboard, LogOut, Menu, Settings, UtensilsCrossed, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, ClipboardList, LayoutDashboard, LogOut, Menu, Settings, UtensilsCrossed, Users, X } from "lucide-react";
 import { BenitLogo } from "@/components/layout/benit-logo";
 import { toast } from "@/components/ui/toast";
 import { logoutAction } from "@/features/auth/actions";
@@ -16,10 +16,12 @@ interface DashboardShellProps {
   tenant: TenantContext;
   newOrdersCount?: number;
   lowStockCount?: number;
+  /** The Mercado Pago token could not be renewed (managers only). */
+  paymentIssue?: boolean;
   children: React.ReactNode;
 }
 
-export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, children }: DashboardShellProps) {
+export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, paymentIssue = false, children }: DashboardShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -190,6 +192,18 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
             {isOpen ? "Aberta" : "Pausada"}
           </button>
         </header>
+        {paymentIssue && pathname !== "/dashboard" ? (
+          <Link
+            href="/settings?tab=payments"
+            role="alert"
+            className="flex items-center justify-center gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2.5 text-center text-sm text-danger transition-colors hover:bg-danger/15"
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              Pagamento online parado: a conexão com o Mercado Pago expirou. <span className="underline underline-offset-4">Reconectar</span>
+            </span>
+          </Link>
+        ) : null}
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">{children}</main>
       </div>
     </div>

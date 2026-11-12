@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "verify:scroll": "node scripts/verify-scroll.mjs --url http://localhost:3100 --out verification"
+    "verify:scroll": "node scripts/verify-scroll.mjs --url http://localhost:3100 --out verification",
+    "mp:stub": "node scripts/mp-stub.mjs",
+    "shots": "node scripts/shots.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

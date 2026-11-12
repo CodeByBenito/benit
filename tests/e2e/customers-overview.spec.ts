@@ -80,3 +80,14 @@ test.describe("overview (fixture)", () => {
     await expect(alert.getByRole("link", { name: "Reconectar agora" })).toHaveAttribute("href", "/settings?tab=payments");
   });
 });
+
+test.describe("payment health banner (fixture)", () => {
+  test("every panel screen warns managers when the Mercado Pago token failed", async ({ page }) => {
+    await page.goto("/dev/painel?mp=falhou");
+    const banner = page.getByRole("alert").filter({ hasText: "Pagamento online parado" });
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute("href", "/settings?tab=payments");
+    await page.goto("/dev/painel");
+    await expect(page.getByRole("alert").filter({ hasText: "Pagamento online parado" })).toHaveCount(0);
+  });
+});

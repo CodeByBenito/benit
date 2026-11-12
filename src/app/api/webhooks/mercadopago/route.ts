@@ -1,5 +1,6 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 import { env, integrations } from "@/lib/env";
+import { PaymentAccountMissingError } from "@/lib/mercadopago/accounts";
 import { syncPaymentFromProvider } from "@/lib/mercadopago/process";
 import { verifyMercadoPagoSignature } from "@/lib/mercadopago/signature";
 import { notifyOwnerOfNewOrder } from "@/lib/notifications/owner-email";
@@ -71,6 +72,12 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ result });
   } catch (error) {
+    if (error instanceof PaymentAccountMissingError) {
+      // Nothing to retry: this store has no account to read the payment with.
+      // Answering 200 stops Mercado Pago from re-sending it for days.
+      await admin.from("webhook_events").update({ processed_at: new Date().toISOString() }).eq("provider", "MERCADO_PAGO").eq("event_key", eventKey);
+      return NextResponse.json({ ignored: true, reason: "no_account" });
+    }
     const message = (error as Error).message;
     // Allow a retry: drop the dedupe row so the next delivery is processed.
     await admin.from("webhook_events").delete().eq("provider", "MERCADO_PAGO").eq("event_key", eventKey);
