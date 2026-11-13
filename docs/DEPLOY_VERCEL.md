@@ -112,3 +112,36 @@ A expiração de pedidos **não depende** do cron da Vercel: ela roda a cada min
 - [ ] Conectar o Mercado Pago em Configurações → Pagamentos e fazer um Pix de teste.
 - [ ] `/dev/painel` responde 404 em produção.
 - [ ] Vercel → **Cron Jobs** mostra as duas rotas; rode cada uma manualmente e veja resposta 200.
+
+
+## 7. Estado do projeto em 13/11/2026 e o que falta para abrir
+
+Conferido direto no painel do Supabase e no banco.
+
+**Já está certo**
+
+- Migrations `0001` a `0012` aplicadas; RLS em todas as tabelas; visitante anônimo sem acesso a tabelas.
+- `pg_cron` ativo: a expiração de pedidos rodou a cada minuto, sem falha, nas últimas 24 horas.
+- Bucket `benit-assets` só aceita imagens de até 5 MB.
+- *Confirm email* ligado.
+- O banco fica em `us-east-1`. A região padrão das funções da Vercel (`iad1`, Washington) é a mesma, então **não mude a região na Vercel**: colocar as funções em São Paulo deixaria cada consulta mais lenta.
+
+**Falta fazer, e bloqueia o uso por clientes reais**
+
+1. **Site URL e Redirect URLs** (passo 3.1). Hoje o Site URL é `http://localhost:3000` e não há nenhuma Redirect URL. Enquanto estiver assim, os links de confirmação de cadastro, de redefinição de senha e de convite apontam para o localhost.
+2. **SMTP próprio** (passo 3.2). Com o envio padrão do Supabase, saem poucos e-mails por hora. Um segundo restaurante se cadastrando já pode ficar sem o e-mail de confirmação.
+3. **Modelos de e-mail** (passo 3.3), em português e com o link por `token_hash`.
+4. **Variáveis de ambiente na Vercel** (passo 2), com `NEXT_PUBLIC_APP_URL` no domínio final.
+5. **Loja de teste.** "Smash da Vila (teste)" está publicada e vai aparecer no sitemap. Despublique em Configurações → Loja ou apague antes de divulgar o site.
+6. **Textos legais.** Preencher `src/lib/legal.ts` e revisar `/termos` e `/privacidade` com um advogado.
+
+**Planos gratuitos: o que muda quando houver cliente pagando**
+
+- **Vercel Hobby** é só para uso pessoal e não comercial. Com restaurantes usando de verdade, o projeto precisa do plano Pro.
+- **Supabase Free** pausa o projeto depois de uma semana sem atividade e não faz backup diário. Para produção, o plano Pro traz backup e a proteção contra senhas vazadas. (O `pg_cron` rodando a cada minuto conta como atividade no banco, mas não conte com isso como garantia.)
+
+**Pode esperar, mas anote**
+
+- Pagamento online só depois de validar com a conta de teste do Mercado Pago (guia de pagamentos, seção 8). Sem as variáveis `MP_*`, o cardápio funciona com pagamento na entrega.
+- Não há Content-Security-Policy ainda: depende de validar o Card Payment Brick no sandbox. Os demais cabeçalhos de segurança já saem em toda resposta.
+- O banco está nos Estados Unidos. Para clientes no Brasil cada consulta leva um pouco mais; mudar de região exige criar outro projeto e migrar os dados.
