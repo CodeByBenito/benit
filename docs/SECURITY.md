@@ -123,3 +123,16 @@ Run the advisor after every migration. With migrations 0001–0011 applied (chec
 | Leaked password protection disabled | WARN | A dashboard setting, not SQL. Turn it on (see `docs/DEPLOY_VERCEL.md`). |
 
 Anything outside this list is new and must be explained or fixed. In particular, no function added after 0008 may be executable by `anon`, and `consume_rate_limit` must stay service-role only.
+
+
+## 13. Least Privilege (migration 0012)
+
+- **`anon` has no table or sequence privilege in `public`**, for existing and future tables (default privileges changed). Anonymous visitors reach data only through the four public RPCs: `get_public_menu_by_slug`, `quote_checkout`, `create_order_atomic` and `get_public_order_by_token`. A table created without RLS by mistake is therefore still closed to the public.
+- **`authenticated` has row operations only.** `TRUNCATE` (which ignores RLS), `REFERENCES` and `TRIGGER` are revoked.
+- **Internal functions are not an API.** Trigger functions and `normalize_text` are no longer executable by `PUBLIC`/`anon`.
+- **`profiles`.** A user can update only `full_name` and `phone` of their own row (column privileges). `email` follows `auth.users` and `is_platform_admin` is not writable through the API. This replaced a policy that queried `profiles` from inside its own `WITH CHECK`, which Postgres rejects with "infinite recursion detected in policy": profile updates never worked before 0012.
+- **Policies.** `auth.uid()` is wrapped as `(SELECT auth.uid())` so it is evaluated once per statement. `store_business_hours`, `delivery_zones` and `coupons` have exactly one policy per command: members read, `OWNER`/`MANAGER` insert, update and delete.
+
+After 0012 the Security Advisor baseline of section 12 is unchanged. The Performance Advisor has no warnings left; its remaining notices are informational: composite foreign keys whose leading column is already indexed, and "unused index" on a database that has had almost no traffic yet.
+
+**Note on the migration history.** In this Supabase project migrations 0001–0007 were applied through the SQL Editor, so the project's migration table lists only 0008 onward. Do not run `supabase db push` against it: the CLI would try to apply 0001–0007 again. Apply new migrations with the SQL Editor bundle or the Supabase MCP.

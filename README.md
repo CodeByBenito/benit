@@ -83,6 +83,7 @@ O esquema vive em `supabase/migrations/`, numerado. **Nunca edite uma migration 
 | `0009` | Equipe: listar, convidar, trocar papel e remover. |
 | `0010` | Ordenação do cardápio por arrastar; bucket de imagens limitado a imagens de até 5 MB. |
 | `0011` | Anti-spam do checkout público: limite por telefone e contador por visitante. |
+| `0012` | Menor privilégio: visitante anônimo sem acesso a tabelas, políticas mais rápidas e correção da atualização de perfil. |
 
 ### Como aplicar
 
@@ -94,7 +95,7 @@ O esquema vive em `supabase/migrations/`, numerado. **Nunca edite uma migration 
 
 São três colagens porque o Postgres não deixa usar um valor de enum na mesma transação que o cria.
 
-**Pela CLI do Supabase:** `supabase db push`.
+**Pela CLI do Supabase:** `supabase db push`, só em projeto novo. No projeto atual as migrations 0001–0007 foram aplicadas pelo SQL Editor e não constam no histórico da CLI; nele, use o passo 3.
 
 Depois de aplicar, confira em *Database → Extensions* se o `pg_cron` está ativo e rode o *Security Advisor* do painel.
 
