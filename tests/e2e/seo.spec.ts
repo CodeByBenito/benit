@@ -43,3 +43,31 @@ test.describe("identity and SEO", () => {
     await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
   });
 });
+
+test.describe("response headers", () => {
+  test.beforeEach(({}, info) => {
+    test.skip(info.project.name === "mobile", "HTTP-level checks; one project is enough");
+  });
+
+  test("every page carries the security headers and hides the framework", async ({ request }) => {
+    for (const path of ["/", "/login", "/dev/menu", "/termos"]) {
+      const headers = (await request.get(path)).headers();
+      expect(headers["x-content-type-options"], path).toBe("nosniff");
+      expect(headers["x-frame-options"], path).toBe("DENY");
+      expect(headers["referrer-policy"], path).toBe("strict-origin-when-cross-origin");
+      expect(headers["permissions-policy"], path).toContain("geolocation=()");
+      expect(headers["x-powered-by"], path).toBeUndefined();
+    }
+  });
+
+  test("order pages never leak their secret address as a referrer", async ({ request }) => {
+    const headers = (await request.get("/pedido/qualquer-token")).headers();
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(headers["x-robots-tag"]).toBe("noindex, nofollow");
+  });
+
+  test("the image optimizer is not an open proxy", async ({ request }) => {
+    const res = await request.get("/_next/image?url=" + encodeURIComponent("https://example.com/a.png") + "&w=640&q=75");
+    expect(res.status()).toBe(400);
+  });
+});
