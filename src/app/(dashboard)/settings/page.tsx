@@ -2,35 +2,41 @@ import { CouponsTab } from "@/components/settings/coupons-tab";
 import { DeliveryTab } from "@/components/settings/delivery-tab";
 import { HoursTab } from "@/components/settings/hours-tab";
 import { PaymentsTab } from "@/components/settings/payments-tab";
-import { StoreSettingsForm } from "@/components/layout/store-settings-form";
+import { StoreTab } from "@/components/settings/store-tab";
+import { TeamTab } from "@/components/settings/team-tab";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getPaymentAccountStatus } from "@/features/payments/actions";
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
-import type { BusinessHour, Coupon, DeliveryZone } from "@/types/domain.types";
+import type { BusinessHour, Coupon, DeliveryZone, TeamMember } from "@/types/domain.types";
 
-const TABS = ["loja", "payments", "delivery", "hours", "coupons"] as const;
+const TABS = ["loja", "payments", "delivery", "hours", "coupons", "team"] as const;
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string; mp?: string }> }) {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("settings");
   const { tab, mp } = await searchParams;
   const supabase = await createClient();
   const storeId = tenant.store.id;
 
-  const [{ data: zones }, { data: hours }, { data: coupons }, { data: canManage }, account] = await Promise.all([
+  const orgId = tenant.organization.id;
+
+  const [{ data: zones }, { data: hours }, { data: coupons }, { data: canManage }, account, { data: team }, { data: isOwner }] = await Promise.all([
     supabase.from("delivery_zones").select("*").eq("store_id", storeId).order("sort_order").order("name"),
     supabase.from("store_business_hours").select("*").eq("store_id", storeId).order("weekday").order("opens_at"),
     supabase.from("coupons").select("*").eq("store_id", storeId).order("created_at", { ascending: false }),
     supabase.rpc("can_manage_store", { p_store_id: storeId }),
     getPaymentAccountStatus(storeId),
+    // Owners and managers only (the RPC refuses everyone else, who never reach this page).
+    supabase.rpc("list_team_members", { p_org_id: orgId }),
+    supabase.rpc("is_org_owner", { p_org_id: orgId }),
   ]);
 
   const initialTab = TABS.includes(tab as (typeof TABS)[number]) ? (tab as string) : "loja";
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="Configurações" description={`Identidade, pagamentos, entrega, horários e cupons de ${tenant.store.name}.`} />
+      <PageHeader title="Configurações" description={`Identidade, pagamentos, entrega, horários, cupons e equipe de ${tenant.store.name}.`} />
       <Tabs defaultValue={initialTab} className="mt-8">
         <TabsList>
           <TabsTrigger value="loja">Loja</TabsTrigger>
@@ -38,9 +44,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <TabsTrigger value="delivery">Entrega</TabsTrigger>
           <TabsTrigger value="hours">Horários</TabsTrigger>
           <TabsTrigger value="coupons">Cupons</TabsTrigger>
+          <TabsTrigger value="team">Equipe</TabsTrigger>
         </TabsList>
         <TabsContent value="loja" className="mt-8">
-          <StoreSettingsForm store={tenant.store} />
+          <StoreTab store={tenant.store} canManage={Boolean(canManage)} />
         </TabsContent>
         <TabsContent value="payments" className="mt-8">
           <PaymentsTab store={tenant.store} account={account} canManage={Boolean(canManage)} mpResult={mp} />
@@ -53,6 +60,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </TabsContent>
         <TabsContent value="coupons" className="mt-8">
           <CouponsTab storeId={storeId} coupons={(coupons ?? []) as Coupon[]} canManage={Boolean(canManage)} />
+        </TabsContent>
+        <TabsContent value="team" className="mt-8">
+          <TeamTab
+            organizationId={orgId}
+            organizationName={tenant.organization.name}
+            stores={tenant.stores.map((s) => ({ id: s.id, name: s.name }))}
+            members={(team ?? []) as TeamMember[]}
+            canEdit={Boolean(isOwner)}
+          />
         </TabsContent>
       </Tabs>
     </div>

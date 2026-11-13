@@ -390,6 +390,12 @@ export function CheckoutSheet({
                 </span>
                 <span className="font-mono">{formatCurrencyCents(total)}</span>
               </button>
+              <p className="mt-2.5 text-center text-[11px] leading-relaxed text-foreground-subtle">
+                Seus dados são usados só para este pedido.{" "}
+                <a href="/privacidade" target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-foreground-muted">
+                  Privacidade
+                </a>
+              </p>
             </div>
           </form>
         )}

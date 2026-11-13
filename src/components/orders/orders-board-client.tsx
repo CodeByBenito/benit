@@ -180,7 +180,7 @@ export function OrdersBoardClient({ storeId, storeName, initialOrders, products 
               { value: "history", label: "Histórico" },
             ]}
           />
-          <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => setFocus((f) => !f)} aria-label={focus ? "Sair do modo cozinha" : "Modo cozinha (tela cheia)"}>
+          <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => setFocus((f) => !f)} aria-label={focus ? "Sair da tela cheia" : "Tela cheia"}>
             {focus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>

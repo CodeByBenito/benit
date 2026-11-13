@@ -1,10 +1,10 @@
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { InventoryControlClient } from "@/components/inventory/inventory-control-client";
 import type { Category, Product, StockMovement } from "@/types/domain.types";
 
 export default async function InventoryPage() {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("inventory");
   const supabase = await createClient();
 
   const [

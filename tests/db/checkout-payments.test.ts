@@ -372,8 +372,10 @@ describe("privileges & isolation", () => {
   });
 
   it("anon cannot read coupons, zones or hours tables directly", async () => {
-    const rows = await as(db, "anon", null, async (tx) => (await tx.query(`SELECT * FROM public.coupons`)).rows);
-    expect(rows).toHaveLength(0);
+    // Since migration 0012 anon has no table privilege at all (it used to get zero rows from RLS).
+    for (const table of ["coupons", "delivery_zones", "store_business_hours"]) {
+      await expect(as(db, "anon", null, (tx) => tx.query(`SELECT * FROM public.${table}`)), table).rejects.toThrow(/permission denied/);
+    }
   });
 
   it("kitchen staff cannot change money settings or coupons; owner can", async () => {

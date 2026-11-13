@@ -1,10 +1,10 @@
-import { requireTenantContext } from "@/lib/permissions/tenant";
+import { requireArea } from "@/lib/permissions/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { MenuManagerClient } from "@/components/menu/menu-manager-client";
 import type { Category, Product, ProductOption, ProductOptionGroup } from "@/types/domain.types";
 
 export default async function MenuManagerPage() {
-  const tenant = await requireTenantContext();
+  const tenant = await requireArea("menu");
   const supabase = await createClient();
 
   const [

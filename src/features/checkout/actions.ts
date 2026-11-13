@@ -11,6 +11,7 @@ import { syncPaymentFromProvider } from "@/lib/mercadopago/process";
 import { centsToReais, mapMercadoPagoStatus } from "@/lib/mercadopago/status-map";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { allowPublicRequest, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { cardPaymentSchema, checkoutSchema, quoteSchema } from "@/lib/validations";
 import type { PaymentStatus } from "@/types/domain.types";
 
@@ -48,6 +49,7 @@ export async function quoteCheckoutAction(payload: unknown): Promise<ActionResul
   const parsed = quoteSchema.safeParse(payload);
   if (!parsed.success) return { success: false, error: "Sacola inválida." };
   const d = parsed.data;
+  if (!(await allowPublicRequest("quote", d.slug))) return { success: false, error: RATE_LIMIT_MESSAGE };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("quote_checkout", {
     p_slug: d.slug,
@@ -67,6 +69,8 @@ export async function placeOrderAction(payload: unknown): Promise<ActionResult<P
     return { success: false, error: parsed.error.issues[0]?.message ?? "Confira os dados do pedido." };
   }
   const d = parsed.data;
+  // Per visitor here; per phone inside the order transaction (migration 0011).
+  if (!(await allowPublicRequest("order", d.storeId))) return { success: false, error: RATE_LIMIT_MESSAGE };
   const supabase = await createClient();
 
   const { data, error } = await supabase.rpc("create_order_atomic", {
@@ -206,6 +210,7 @@ export async function payWithCardAction(payload: unknown): Promise<ActionResult<
   if (!parsed.success) return { success: false, error: "Dados do cartão inválidos." };
   if (!integrations.mercadoPago) return { success: false, error: "Pagamento online não configurado." };
   const d = parsed.data;
+  if (!(await allowPublicRequest("payment", d.publicToken))) return { success: false, error: RATE_LIMIT_MESSAGE };
 
   const order = await loadAwaitingOrder(d.publicToken);
   if (!order) return { success: false, error: "Este pedido não está mais aguardando pagamento." };

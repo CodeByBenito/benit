@@ -141,3 +141,101 @@ html.lenis body {
 ::-webkit-scrollbar-thumb:hover {
   background: #474747;
 }
+
+/* -----------------------------------------------------------------------------
+ * Kitchen ticket (80 mm thermal paper). The ticket is a hidden portal on <body>
+ * (components/orders/kitchen-ticket.tsx). When printing, everything else is
+ * hidden and the ticket becomes the page: black on white, no colors, large type.
+ * -------------------------------------------------------------------------- */
+.print-ticket {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 80mm;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body > *:not(.print-ticket) {
+    display: none !important;
+  }
+
+  .print-ticket {
+    display: block;
+    width: 72mm;
+    margin: 0 auto;
+    padding: 4mm 0 8mm;
+    color: #000;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 12pt;
+    line-height: 1.3;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-ticket p {
+    margin: 0;
+  }
+
+  .print-ticket ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .print-ticket li {
+    padding: 1.5mm 0;
+    break-inside: avoid;
+  }
+
+  .print-ticket hr {
+    margin: 2.5mm 0;
+    border: 0;
+    border-top: 1px dashed #000;
+  }
+
+  .print-ticket__store {
+    font-size: 10pt;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .print-ticket__number {
+    font-size: 30pt;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: center;
+  }
+
+  .print-ticket__meta {
+    font-size: 11pt;
+    text-align: center;
+  }
+
+  .print-ticket__item {
+    font-size: 14pt;
+    font-weight: 700;
+  }
+
+  .print-ticket__option {
+    padding-left: 6mm;
+  }
+
+  .print-ticket__note {
+    margin-top: 1mm !important;
+    padding: 1mm 2mm;
+    border: 1px solid #000;
+    font-weight: 700;
+  }
+}

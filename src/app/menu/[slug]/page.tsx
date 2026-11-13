@@ -35,11 +35,17 @@ const loadMenu = cache(async (slug: string) => {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const menu = await loadMenu(slug);
-  if (!menu) return { title: "Cardápio não encontrado" };
+  if (!menu) return { title: "Cardápio não encontrado", robots: { index: false } };
+  const title = `${menu.store.name} · Cardápio`;
+  const description = menu.store.description ?? `Peça online em ${menu.store.name}.`;
+  const canonical = `/menu/${menu.store.slug}`;
+  // The share image comes from ./opengraph-image.tsx (name, logo and cover).
   return {
-    title: { absolute: `${menu.store.name} · Cardápio` },
-    description: menu.store.description ?? `Peça online em ${menu.store.name}.`,
-    openGraph: { title: menu.store.name, images: menu.store.banner_url ? [menu.store.banner_url] : undefined },
+    title: { absolute: title },
+    description,
+    alternates: { canonical },
+    openGraph: { type: "website", locale: "pt_BR", url: canonical, siteName: menu.store.name, title, description },
+    twitter: { card: "summary_large_image", title, description },
   };
 }
 

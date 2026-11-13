@@ -6,12 +6,14 @@ import { DeliveryTab } from "@/components/settings/delivery-tab";
 import { HoursTab } from "@/components/settings/hours-tab";
 import { PaymentsTab } from "@/components/settings/payments-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fixtureCoupons, fixtureTenant, fixtureZonesRows } from "../../dashboard-fixtures";
+import { fixtureCoupons, fixtureTeam, fixtureTenant, fixtureZonesRows } from "../../dashboard-fixtures";
+import { TeamTabPreview } from "./team-tab-preview";
+import { StoreTabPreview } from "./store-tab-preview";
 
 /** Development-only design preview of the settings tabs. */
-export default async function DevSettings({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function DevSettings({ searchParams }: { searchParams: Promise<{ tab?: string; as?: string }> }) {
   if (process.env.NODE_ENV === "production") notFound();
-  const { tab = "payments" } = await searchParams;
+  const { tab = "payments", as } = await searchParams;
   const store = fixtureTenant.store;
   const hours = [1, 2, 3, 4, 5]
     .map((d) => ({ id: `h${d}`, store_id: store.id, weekday: d, opens_at: "18:00:00", closes_at: "23:30:00" }))
@@ -22,11 +24,16 @@ export default async function DevSettings({ searchParams }: { searchParams: Prom
         <PageHeader title="Configurações" description={`Identidade, pagamentos, entrega, horários e cupons de ${store.name}.`} />
         <Tabs defaultValue={tab} className="mt-8">
           <TabsList>
+            <TabsTrigger value="loja">Loja</TabsTrigger>
             <TabsTrigger value="payments">Pagamentos</TabsTrigger>
             <TabsTrigger value="delivery">Entrega</TabsTrigger>
             <TabsTrigger value="hours">Horários</TabsTrigger>
             <TabsTrigger value="coupons">Cupons</TabsTrigger>
+            <TabsTrigger value="team">Equipe</TabsTrigger>
           </TabsList>
+          <TabsContent value="loja" className="mt-8">
+            <StoreTabPreview store={store} />
+          </TabsContent>
           <TabsContent value="payments" className="mt-8">
             <PaymentsTab store={store} account={{ connected: false, status: null, liveMode: null, providerUserId: null, configured: true }} canManage />
           </TabsContent>
@@ -38,6 +45,10 @@ export default async function DevSettings({ searchParams }: { searchParams: Prom
           </TabsContent>
           <TabsContent value="coupons" className="mt-8">
             <CouponsTab storeId={store.id} coupons={fixtureCoupons} canManage />
+          </TabsContent>
+          <TabsContent value="team" className="mt-8">
+            {/* ?as=manager shows the read-only list a manager gets. */}
+            <TeamTabPreview members={fixtureTeam} canEdit={as !== "manager"} />
           </TabsContent>
         </Tabs>
       </div>

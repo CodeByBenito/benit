@@ -96,7 +96,11 @@ export function PaymentsTab({ store, account, canManage, mpResult }: { store: St
                 <div>
                   <p className="font-medium">{account.status === "REFRESH_FAILED" ? "Reconecte sua conta" : "Nenhuma conta conectada"}</p>
                   <p className="text-xs text-foreground-muted">
-                    {account.configured ? "Leva menos de um minuto." : "A integração ainda não foi configurada no servidor."}
+                    {account.status === "REFRESH_FAILED"
+                      ? "A conexão expirou e o pagamento online foi desligado. Reconecte para voltar a receber Pix e cartão."
+                      : account.configured
+                        ? "Leva menos de um minuto."
+                        : "A integração ainda não foi configurada no servidor."}
                   </p>
                 </div>
               </div>

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { ArrowUpRight, Boxes, ClipboardList, LayoutDashboard, LogOut, Menu, Settings, UtensilsCrossed, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, ClipboardList, LayoutDashboard, LogOut, Menu, Settings, UtensilsCrossed, Users, X } from "lucide-react";
 import { BenitLogo } from "@/components/layout/benit-logo";
 import { toast } from "@/components/ui/toast";
 import { logoutAction } from "@/features/auth/actions";
 import { toggleStoreOpenStatusAction } from "@/features/stores/actions";
+import { ROLE_LABEL, canAccessArea, homePath, type DashboardArea } from "@/lib/permissions/roles";
 import { cn } from "@/lib/utils";
 import type { TenantContext } from "@/types/domain.types";
 
@@ -15,12 +16,12 @@ interface DashboardShellProps {
   tenant: TenantContext;
   newOrdersCount?: number;
   lowStockCount?: number;
+  /** The Mercado Pago token could not be renewed (managers only). */
+  paymentIssue?: boolean;
   children: React.ReactNode;
 }
 
-const ROLE_LABEL = { OWNER: "Proprietário", MANAGER: "Gerente", ATTENDANT: "Atendente", KITCHEN: "Cozinha" } as const;
-
-export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, children }: DashboardShellProps) {
+export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, paymentIssue = false, children }: DashboardShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -28,14 +29,21 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
-  const nav = [
-    { label: "Visão geral", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Pedidos", href: "/orders", icon: ClipboardList, badge: newOrdersCount || undefined, tone: "brand" as const },
-    { label: "Cardápio", href: "/menu-manager", icon: UtensilsCrossed },
-    { label: "Estoque", href: "/inventory", icon: Boxes, badge: lowStockCount || undefined, tone: "warning" as const },
-    { label: "Clientes", href: "/customers", icon: Users },
-    { label: "Configurações", href: "/settings", icon: Settings },
+  const role = tenant.role;
+  const home = homePath(role);
+  // Kitchen staff follow the store status but do not pause the store.
+  const canToggleOpen = role !== "KITCHEN";
+
+  const allNav: { label: string; href: string; area: DashboardArea; icon: typeof LayoutDashboard; badge?: number; tone?: "brand" | "warning" }[] = [
+    { label: "Visão geral", href: "/dashboard", area: "overview", icon: LayoutDashboard },
+    { label: "Pedidos", href: "/orders", area: "orders", icon: ClipboardList, badge: newOrdersCount || undefined, tone: "brand" },
+    { label: "Cardápio", href: "/menu-manager", area: "menu", icon: UtensilsCrossed },
+    { label: "Estoque", href: "/inventory", area: "inventory", icon: Boxes, badge: lowStockCount || undefined, tone: "warning" },
+    { label: "Clientes", href: "/customers", area: "customers", icon: Users },
+    { label: "Configurações", href: "/settings", area: "settings", icon: Settings },
   ];
+  // Each role only sees the areas it works in (see lib/permissions/roles).
+  const nav = allNav.filter((item) => canAccessArea(role, item.area));
 
   function toggleOpen() {
     const next = !isOpen;
@@ -52,7 +60,7 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center px-5">
-        <BenitLogo href="/dashboard" />
+        <BenitLogo href={home} />
       </div>
 
       <div className="px-3">
@@ -74,10 +82,10 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
           <button
             type="button"
             onClick={toggleOpen}
-            disabled={pending}
+            disabled={pending || !canToggleOpen}
             aria-pressed={isOpen}
             className={cn(
-              "mt-3 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-medium transition-colors duration-base",
+              "mt-3 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-xs font-medium transition-colors duration-base disabled:cursor-default",
               isOpen ? "border-success/30 bg-success/10 text-success" : "border-danger/30 bg-danger/10 text-danger"
             )}
           >
@@ -88,7 +96,7 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
               </span>
               {isOpen ? "Recebendo pedidos" : "Loja pausada"}
             </span>
-            <span className="text-[10px] uppercase tracking-wider opacity-70">{isOpen ? "Pausar" : "Abrir"}</span>
+            {canToggleOpen ? <span className="text-[10px] uppercase tracking-wider opacity-70">{isOpen ? "Pausar" : "Abrir"}</span> : null}
           </button>
         </div>
       </div>
@@ -139,7 +147,7 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
         <div className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{tenant.user.full_name}</p>
-            <p className="truncate text-[11px] text-foreground-subtle">{ROLE_LABEL[tenant.membership.role]} · {tenant.organization.name}</p>
+            <p className="truncate text-[11px] text-foreground-subtle">{ROLE_LABEL[role]} · {tenant.organization.name}</p>
           </div>
           <form action={logoutAction}>
             <button type="submit" aria-label="Sair da conta" className="rounded-lg p-2 text-foreground-subtle transition-colors hover:bg-surface-card hover:text-foreground">
@@ -172,18 +180,30 @@ export function DashboardShell({ tenant, newOrdersCount = 0, lowStockCount = 0, 
           <button type="button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu" className="flex h-9 w-9 items-center justify-center rounded-lg border border-border">
             <Menu className="h-5 w-5" />
           </button>
-          <BenitLogo href="/dashboard" />
+          <BenitLogo href={home} />
           <button
             type="button"
             onClick={toggleOpen}
-            disabled={pending}
-            aria-label={isOpen ? "Pausar loja" : "Abrir loja"}
+            disabled={pending || !canToggleOpen}
+            aria-label={canToggleOpen ? (isOpen ? "Pausar loja" : "Abrir loja") : isOpen ? "Loja aberta" : "Loja pausada"}
             className={cn("flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium", isOpen ? "border-success/30 text-success" : "border-danger/30 text-danger")}
           >
             <span className={cn("h-2 w-2 rounded-full", isOpen ? "bg-success" : "bg-danger")} />
             {isOpen ? "Aberta" : "Pausada"}
           </button>
         </header>
+        {paymentIssue && pathname !== "/dashboard" ? (
+          <Link
+            href="/settings?tab=payments"
+            role="alert"
+            className="flex items-center justify-center gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2.5 text-center text-sm text-danger transition-colors hover:bg-danger/15"
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              Pagamento online parado: a conexão com o Mercado Pago expirou. <span className="underline underline-offset-4">Reconectar</span>
+            </span>
+          </Link>
+        ) : null}
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">{children}</main>
       </div>
     </div>

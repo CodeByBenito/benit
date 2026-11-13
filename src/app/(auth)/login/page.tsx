@@ -1,26 +1,19 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
-import { useState, useTransition } from "react";
-import { ArrowRight, Loader2 } from "lucide-react";
-import { AuthError, AuthShell } from "@/components/layout/auth-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { loginAction } from "@/features/auth/actions";
+import { LoginForm } from "@/components/auth/login-form";
+import { AuthShell } from "@/components/layout/auth-shell";
+import { safeNextPath } from "@/lib/utils";
 
-export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+export const metadata: Metadata = { title: "Entrar" };
 
-  function submit(formData: FormData) {
-    setError(null);
-    start(async () => {
-      const res = await loginAction(formData);
-      if (res && !res.success) setError(res.error ?? "Não foi possível entrar.");
-    });
-  }
+const LINK_ERRORS: Record<string, string> = {
+  link: "Este link expirou ou já foi usado. Se você estava confirmando o e-mail, tente entrar; para trocar a senha, peça um novo link.",
+  config: "O acesso por e-mail ainda não está configurado neste ambiente.",
+};
 
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
+  const { next, error } = await searchParams;
+  const safeNext = next ? safeNextPath(next) : undefined;
   return (
     <AuthShell
       title="Bem-vindo de volta."
@@ -34,27 +27,7 @@ export default function LoginPage() {
         </>
       }
     >
-      <AuthError message={error} />
-      <form action={submit} className="space-y-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="email">E-mail</Label>
-          <Input id="email" name="email" type="email" required autoComplete="email" className="h-11" placeholder="voce@seurestaurante.com.br" />
-        </div>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password">Senha</Label>
-            <Link href="/forgot-password" className="text-xs text-foreground-muted hover:text-foreground">
-              Esqueci a senha
-            </Link>
-          </div>
-          <Input id="password" name="password" type="password" required autoComplete="current-password" className="h-11" />
-        </div>
-        <Button type="submit" size="lg" className="w-full" disabled={pending}>
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {pending ? "Entrando…" : "Entrar"}
-          {!pending ? <ArrowRight className="h-4 w-4" /> : null}
-        </Button>
-      </form>
+      <LoginForm next={safeNext} initialError={error ? (LINK_ERRORS[error] ?? null) : null} />
     </AuthShell>
   );
 }

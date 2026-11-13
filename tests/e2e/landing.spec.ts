@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers";
 
 test.describe("landing", () => {
   test("renders every scene, one primary CTA, no horizontal overflow", async ({ page }) => {

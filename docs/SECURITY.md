@@ -3,7 +3,7 @@
 ## 1. Defense-in-Depth Architecture
 
 BENIT enforces security across four distinct layers:
-1. **Edge / Middleware Layer (`src/middleware.ts`):** Next.js Middleware refreshes Supabase Auth sessions and blocks unauthenticated access to `/dashboard`, `/orders`, `/menu-manager`, `/inventory`, `/customers`, `/settings`, and `/onboarding`.
+1. **Edge / Middleware Layer (`src/middleware.ts`):** Next.js Middleware refreshes Supabase Auth sessions and blocks unauthenticated access to `/dashboard`, `/orders`, `/menu-manager`, `/inventory`, `/customers`, `/settings`, and `/onboarding`. `/auth/*` and `/reset-password` are always reachable (section 7).
 2. **Application / Server Action Layer:** Every Server Action validates payloads via **Zod**, authenticates the caller via `supabase.auth.getUser()`, and resolves `organization_id` and `store_id` from verified `memberships` records (`getTenantContext`).
 3. **Database Layer (PostgreSQL RLS + Composite Tenant Foreign Keys):**
    - Every table has Row Level Security (RLS) enabled.
@@ -69,3 +69,70 @@ BENIT enforces security across four distinct layers:
 - **RPC privileges.** `apply_payment_update`, `record_payment_attempt`, `mark_refund_failed` and `expire_unpaid_orders` are granted to `service_role` only. The legacy 12-argument `create_order_atomic`, which trusted client fees, is dropped.
 - **Public tracking.** `get_public_order_by_token` needs a 64-hex (256-bit) token and returns no name, phone or address. Realtime broadcast payloads carry only status fields.
 - **Crons** require `Authorization: Bearer CRON_SECRET` (constant-time compare).
+
+
+## 7. Auth Links, Roles & Team (migration 0009)
+
+- **Open auth routes.** `/auth/callback` and `/reset-password` are reachable signed in or not; they are neither protected nor guest-only. The callback accepts a PKCE `code` or a `token_hash` and only redirects to same-origin paths (`safeNextPath`): `next=https://…`, `//host` and backslash tricks fall back to `/dashboard`.
+- **Role gate per page.** Every panel page calls `requireArea()`. A role without access to an area is redirected to its own first screen; the sidebar only lists permitted areas. This is presentation: the database remains the authority.
+- **Data minimisation for the kitchen.** For a `KITCHEN` session the orders page selects only the columns a cook needs. Phone, address, totals and payment fields are not queried at all.
+- **`memberships` writes.** The table has no `UPDATE` or `DELETE` policy. Role changes and removals go only through `update_team_member_role` and `remove_team_member`, which check `is_org_owner`, refuse the `OWNER` role, lock the row and protect the last owner. Unknown ids and ids of other tenants get the same `FORBIDDEN` answer.
+- **`profiles` stays private.** Names and e-mails of teammates are read only through `list_team_members` (owner, or a manager for the stores they manage).
+- **Invitations.** `add_team_member` runs with the session of the inviting owner and enforces every rule. The service role is used for one thing: sending the Supabase invitation e-mail to an address with no account, and only after that RPC accepted the request. If linking fails afterwards, the freshly invited account is deleted.
+
+| Table | Authenticated | Anonymous |
+| :--- | :--- | :--- |
+| `memberships` | `SELECT` for org members; `INSERT` for the org owner; `UPDATE`/`DELETE` only via the team RPCs. | **None.** |
+| `rate_limit_buckets` | **None** (RLS on, no policies, privileges revoked). | **None.** |
+
+## 8. Uploads & Storage (migration 0010)
+
+- **Bucket limits.** `benit-assets` accepts only `image/webp`, `image/jpeg` and `image/png`, up to 5 MB, enforced by Storage itself.
+- **Paths are validated on the server.** For logo and cover the browser sends a storage *path*, never a URL. `setStoreBrandImageAction` requires `<storeId>/<kind>-<timestamp>.<ext>` for exactly that store and kind and requires `OWNER`/`MANAGER`. A product photo that changes must be a file under `<storeId>/` in our bucket.
+- **Server-side image fetches** (share images) are limited to public objects of our own bucket (`isOwnStorageUrl`), so a stored URL can never make the server request an arbitrary host.
+- **`reorder_catalog`** is `SECURITY INVOKER`: the RLS of the caller decides what is updated; ids of other stores are ignored.
+
+## 9. Public Checkout Abuse Limits (migration 0011)
+
+- **Per phone, inside the transaction.** A `BEFORE INSERT` trigger on `orders` limits digital-menu orders per phone and store. It runs inside `create_order_atomic`, after the store row is locked, so it cannot be bypassed by calling the RPC directly with the anon key and concurrent requests are counted correctly.
+- **Per visitor, in the app.** `consume_rate_limit` (service role only) is a fixed-window counter. The app keys it with a SHA-256 hash of the visitor address plus the target; raw addresses are never stored, and old buckets are purged.
+- **Fails open** by design: a broken limiter must not take the checkout down. The per-phone trigger does not fail open.
+
+## 10. Error Handling & Public Pages
+
+- Error boundaries never render `error.message`; they show a generic text and the error digest for support.
+- `/dev/*` is guarded once in `src/app/dev/layout.tsx` and answers 404 in production.
+- `robots.txt` disallows the panel, `/pedido`, `/dev`, `/api`, `/auth` and `/reset-password`. The sitemap lists only the landing, the legal pages and published menus.
+- The Mercado Pago webhook answers 200 for a store without a connected account (nothing to retry) and 401 for a missing or wrong signature.
+
+## 11. Dependencies
+
+- `next` is pinned to the latest 15.1 patch. Keep it on the newest patch of its line: the framework has had critical advisories (middleware bypass, RSC).
+- Brand image routes (`icon`, `apple-icon`, `opengraph-image`) run on the Edge runtime with fonts bundled as assets.
+
+
+## 12. Supabase Security Advisor Baseline
+
+Run the advisor after every migration. With migrations 0001–0011 applied (checked on 2026-11-12) the expected result is:
+
+| Finding | Level | Why it is expected |
+| :--- | :--- | :--- |
+| RLS enabled, no policy: `oauth_states`, `store_payment_accounts`, `webhook_events`, `rate_limit_buckets` | INFO | On purpose. With no policy only the service role reaches them. |
+| `anon` can execute `SECURITY DEFINER`: `get_public_menu_by_slug`, `quote_checkout`, `create_order_atomic`, `get_public_order_by_token` | WARN | These four are the public surface of the menu and the checkout. Each returns a controlled projection or validates everything itself. |
+| `authenticated` can execute `SECURITY DEFINER` (17 functions: RLS helpers, order and stock RPCs, onboarding, team RPCs) | WARN | Each one checks the caller (`has_store_access`, `can_manage_store`, `is_org_owner`) before doing anything. |
+| Leaked password protection disabled | WARN | A dashboard setting, not SQL. Turn it on (see `docs/DEPLOY_VERCEL.md`). |
+
+Anything outside this list is new and must be explained or fixed. In particular, no function added after 0008 may be executable by `anon`, and `consume_rate_limit` must stay service-role only.
+
+
+## 13. Least Privilege (migration 0012)
+
+- **`anon` has no table or sequence privilege in `public`**, for existing and future tables (default privileges changed). Anonymous visitors reach data only through the four public RPCs: `get_public_menu_by_slug`, `quote_checkout`, `create_order_atomic` and `get_public_order_by_token`. A table created without RLS by mistake is therefore still closed to the public.
+- **`authenticated` has row operations only.** `TRUNCATE` (which ignores RLS), `REFERENCES` and `TRIGGER` are revoked.
+- **Internal functions are not an API.** Trigger functions and `normalize_text` are no longer executable by `PUBLIC`/`anon`.
+- **`profiles`.** A user can update only `full_name` and `phone` of their own row (column privileges). `email` follows `auth.users` and `is_platform_admin` is not writable through the API. This replaced a policy that queried `profiles` from inside its own `WITH CHECK`, which Postgres rejects with "infinite recursion detected in policy": profile updates never worked before 0012.
+- **Policies.** `auth.uid()` is wrapped as `(SELECT auth.uid())` so it is evaluated once per statement. `store_business_hours`, `delivery_zones` and `coupons` have exactly one policy per command: members read, `OWNER`/`MANAGER` insert, update and delete.
+
+After 0012 the Security Advisor baseline of section 12 is unchanged. The Performance Advisor has no warnings left; its remaining notices are informational: composite foreign keys whose leading column is already indexed, and "unused index" on a database that has had almost no traffic yet.
+
+**Note on the migration history.** In this Supabase project migrations 0001–0007 were applied through the SQL Editor, so the project's migration table lists only 0008 onward. Do not run `supabase db push` against it: the CLI would try to apply 0001–0007 again. Apply new migrations with the SQL Editor bundle or the Supabase MCP.

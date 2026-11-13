@@ -23,7 +23,9 @@ CREATE SCHEMA realtime;
 CREATE TABLE auth.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT,
-  raw_user_meta_data JSONB DEFAULT '{}'::jsonb
+  raw_user_meta_data JSONB DEFAULT '{}'::jsonb,
+  invited_at TIMESTAMPTZ,
+  last_sign_in_at TIMESTAMPTZ
 );
 
 CREATE FUNCTION auth.uid() RETURNS UUID LANGUAGE sql STABLE AS $$
@@ -36,7 +38,7 @@ CREATE FUNCTION extensions.unaccent(TEXT) RETURNS TEXT LANGUAGE sql IMMUTABLE AS
     'aaaaaaAAAAAAeeeeEEEEiiiiIIIIoooooOOOOOuuuuUUUUcCnN')
 $$;
 
-CREATE TABLE storage.buckets (id TEXT PRIMARY KEY, name TEXT, public BOOLEAN);
+CREATE TABLE storage.buckets (id TEXT PRIMARY KEY, name TEXT, public BOOLEAN, file_size_limit BIGINT, allowed_mime_types TEXT[]);
 CREATE TABLE storage.objects (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id TEXT, name TEXT);
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 

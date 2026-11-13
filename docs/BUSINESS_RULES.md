@@ -65,3 +65,54 @@
 - **Offline orders** keep the original rule: stock is deducted on confirmation and returned on cancellation.
 - **Cancelling a paid order** returns stock, releases the coupon, reverses customer stats and triggers an automatic refund on Mercado Pago.
 - **Idempotency.** The checkout sends one idempotency key per bag session, so double taps and retries return the same order. Webhook events are deduplicated, and the payment state never regresses.
+
+
+## 5. Team & Roles (migration 0009)
+
+- **Roles.** `OWNER` (organization-wide, full access), `MANAGER` (everything except managing people), `ATTENDANT` (orders and customers), `KITCHEN` (orders only, on the kitchen board).
+- **Scope.** A membership is either organization-wide (`store_id IS NULL`) or tied to one store. A person never has both in the same organization; they may have one membership per store.
+- **Who manages the team.** Only the organization `OWNER` invites, changes roles and removes. Managers see the list, read-only. Attendants and kitchen staff do not see it.
+- **Inviting.** The owner types an e-mail, a role and a store (or "all stores").
+  - New e-mail: an invitation is sent; the link lets the person create a password and lands them in the panel. Until they sign in, the member shows as "Convite pendente" and the owner can re-send.
+  - E-mail that already has a BENIT account: access is immediate and the person is told by e-mail.
+  - An account that already belongs to another organization is refused. The panel shows one organization per account; multi-organization access is not supported.
+- **`OWNER` is not handed out from the panel.** It cannot be chosen in an invitation or a role change, and the role of an owner cannot be changed.
+- **Last owner.** An organization always keeps at least one owner: the last one cannot be removed, by themself or by anyone.
+- **Removal** cuts access at once. Orders and records made by that person stay in the history.
+- **What the kitchen sees.** Confirmed, preparing and ready orders, with items, add-ons and notes, the first name of the customer and the table. No prices, phone, address or payment data: the server does not send them to a kitchen session. The kitchen moves an order from "A fazer" to "Em preparo" to "Pronto"; confirming a new order and handing it over stay with the front of house.
+- **Pausing the store.** Everyone except kitchen staff can pause or reopen the store from the panel.
+
+> Roles in the interface are presentation. Data is protected by the database (RLS, guard triggers, RPC checks), which is stricter where it matters: settings, payments and publication require `OWNER`/`MANAGER`; team changes require the owner.
+
+## 6. Menu Ordering, Images & Add-ons (migration 0010)
+
+- **Order.** Categories, and products inside each category, appear to the customer in the order the store arranges them by dragging. A new product, or one moved to another category, goes to the end of that category. Saving a product never changes its position.
+- **Deleting a category** does not delete its products: they move to "Sem categoria", shown at the end of the public menu.
+- **Add-on groups** are edited with the product. A group needs a name and at least one option; `max` cannot exceed the number of options and `min` cannot exceed `max`. A required group needs at least one choice.
+- **Editing keeps identities.** Groups and options that still exist keep their ids when a product is saved, so a customer who already has the menu open does not lose the bag.
+- **Removing a product** archives it: it leaves the menu and the stock screen, and old orders keep their item.
+- **Images.**
+  - Logo: square, cropped by the store, stored at 512×512.
+  - Cover: cropped to the menu header proportion, stored at 1600×600.
+  - Product photo: resized to at most 1200 px on the longest side.
+  - Logo and cover accept JPG, PNG or WebP up to 2 MB; product photos up to 12 MB before resizing. Everything is converted in the browser (WebP when the browser can encode it) before upload, and the storage bucket itself refuses anything that is not an image or is larger than 5 MB.
+  - Replacing a logo or cover deletes the previous file.
+
+## 7. Stock Screen Rules
+
+- **Levels.** Sold out (0), below minimum (at or under the alert quantity of the product) and healthy. "Abaixo do mínimo" includes sold-out products.
+- **Quick adjustments.** Entry adds, exit subtracts and can never go below zero, count sets the absolute quantity. Each one records a movement with an optional reason.
+- **Untracked products** start being tracked with a first count.
+- Orders keep deducting and returning stock on their own (sections 2 and 4); the screen updates in real time.
+
+## 8. Public Checkout Limits (migration 0011)
+
+- **Per phone.** At most **5 orders per phone, per store, every 10 minutes** through the digital menu. The sixth is refused with "Você fez muitos pedidos em pouco tempo…". Cancelled orders count, so cancelling is not a way around. A retry of the same order (same idempotency key) is not a new order. Manual orders typed by staff are never limited.
+- **Per visitor.** The app also limits, per visitor address and store, quotes (120), orders (12) and card attempts (30) every 10 minutes. This layer fails open: if the counter is unavailable the checkout keeps working.
+- The values live in `public.public_order_limit()` (database) and `PUBLIC_LIMITS` in `src/lib/rate-limit.ts` (app).
+
+## 9. Accounts & Passwords
+
+- Passwords have at least 8 characters, on sign-up, on reset and for invited members.
+- Every e-mail link (confirm account, reset password, team invitation) lands on `/auth/callback`, which signs the person in and sends them on: onboarding after sign-up, the new-password screen after a reset or an invitation.
+- A reset link works once and expires; an expired link leads to a screen that offers a new one. The "forgot password" form never reveals whether an e-mail has an account.

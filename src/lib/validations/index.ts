@@ -14,12 +14,26 @@ export const registerSchema = z.object({
   phone: z.string().trim().optional(),
   password: z
     .string()
-    .min(6, "A senha deve ter pelo menos 6 caracteres."),
+    .min(8, "A senha deve ter pelo menos 8 caracteres.")
+    .max(72, "A senha deve ter no máximo 72 caracteres."),
 });
 
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().email("Informe um e-mail válido."),
 });
+
+export const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "A senha deve ter pelo menos 8 caracteres.")
+      .max(72, "A senha deve ter no máximo 72 caracteres."),
+    confirmPassword: z.string(),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "As senhas não conferem.",
+  });
 
 export const onboardingSchema = z.object({
   organizationName: z
@@ -62,10 +76,15 @@ export const storeSettingsSchema = z.object({
   phone: z.string().trim().optional().nullable(),
   whatsapp: z.string().trim().optional().nullable(),
   address: z.string().trim().max(250).optional().nullable(),
-  logoUrl: z.string().trim().url().optional().nullable().or(z.literal("")),
-  bannerUrl: z.string().trim().url().optional().nullable().or(z.literal("")),
   isOpen: z.boolean(),
   isPublished: z.boolean(),
+});
+
+/** Logo/cover are set by upload only: the client sends a storage path, never a URL. */
+export const storeBrandImageSchema = z.object({
+  storeId: z.string().uuid(),
+  kind: z.enum(["logo", "banner"]),
+  path: z.string().trim().min(1).max(200).nullable(),
 });
 
 export const categorySchema = z.object({
@@ -327,4 +346,36 @@ export const cardPaymentSchema = z.object({
   payerEmail: z.string().email(),
   identificationType: z.string().max(10).optional(),
   identificationNumber: z.string().max(20).optional(),
+});
+
+// --- Team -------------------------------------------------------------------
+
+const invitableRole = z.enum(["MANAGER", "ATTENDANT", "KITCHEN"], {
+  errorMap: () => ({ message: "Escolha Gerente, Atendente ou Cozinha." }),
+});
+
+export const inviteTeamMemberSchema = z.object({
+  organizationId: z.string().uuid(),
+  email: z.string().trim().toLowerCase().email("Informe um e-mail válido.").max(254),
+  fullName: z.string().trim().max(80).optional().or(z.literal("")),
+  role: invitableRole,
+  /** null = every store of the organization. */
+  storeId: z.string().uuid().nullable(),
+});
+
+export const updateTeamMemberRoleSchema = z.object({
+  membershipId: z.string().uuid(),
+  role: invitableRole,
+});
+
+export const teamMembershipSchema = z.object({
+  membershipId: z.string().uuid(),
+});
+
+// --- Catalog ----------------------------------------------------------------
+
+export const reorderCatalogSchema = z.object({
+  storeId: z.string().uuid(),
+  kind: z.enum(["category", "product"]),
+  ids: z.array(z.string().uuid()).min(1).max(500),
 });

@@ -60,10 +60,10 @@ Sem `RESEND_API_KEY`, os e-mails são simplesmente ignorados. Nada quebra.
 
 `vercel.json` agenda:
 
-- `/api/cron/expire` a cada 5 minutos. É a reserva caso o pg_cron não esteja disponível. Atenção: no plano Hobby da Vercel os crons só podem rodar uma vez por dia; nesse caso, use o pg_cron ou outro agendador.
+- `/api/cron/expire` uma vez por dia. É só uma reserva: a expiração de pedidos roda a cada minuto no banco, pelo pg_cron. O plano Hobby da Vercel não aceita cron mais frequente que diário.
 - `/api/cron/mp-refresh` diariamente, para renovar os tokens do Mercado Pago.
 
-Defina `CRON_SECRET` no projeto da Vercel.
+Defina `CRON_SECRET` no projeto da Vercel. O passo a passo completo do deploy está em `docs/DEPLOY_VERCEL.md`.
 
 ## 6. Conferência antes de abrir para clientes
 
@@ -73,3 +73,54 @@ Defina `CRON_SECRET` no projeto da Vercel.
 - [ ] Cancelar um pedido pago e ver o estorno no Mercado Pago
 - [ ] E-mail de redefinição de senha chegando pelo seu domínio
 - [ ] `NEXT_PUBLIC_SALES_WHATSAPP` preenchido
+
+## 7. Testar sem credenciais (stub local do Mercado Pago)
+
+`scripts/mp-stub.mjs` imita a API do Mercado Pago: OAuth (com PKCE), criação e consulta de pagamentos, estorno e o webhook assinado. Serve para desenvolver e testar o fluxo inteiro sem conta de teste.
+
+**Teste automático.** `npm test` roda `tests/db/mercadopago-flow.test.ts`: o código real do servidor (retorno do OAuth, checkout, webhook, crons) contra o Postgres embutido e o stub por HTTP. Cobre:
+
+1. conectar a conta (tokens gravados cifrados, `state` forjado recusado);
+2. Pix aprovado: o pedido entra no quadro e o estoque baixa uma única vez, mesmo com webhook repetido;
+3. Pix expirado: o pedido se cancela; pagamento depois do prazo é estornado;
+4. cancelar um pedido pago: o estorno é chamado e o estoque volta;
+5. cartão aprovado e recusado; webhook sem assinatura ou com assinatura errada (401);
+6. token que não renova: conta marcada `REFRESH_FAILED`, pagamento online desligado e aviso no painel.
+
+**Uso manual, com a interface.** Em um terminal:
+
+```bash
+npm run mp:stub
+```
+
+No `.env.local`:
+
+```
+MP_API_BASE_URL=http://localhost:4010
+MP_AUTH_BASE_URL=http://localhost:4010
+MP_CLIENT_ID=stub-client
+MP_CLIENT_SECRET=stub-secret
+MP_WEBHOOK_SECRET=stub-webhook-secret
+```
+
+Reinicie o `npm run dev`. Em Configurações → Pagamentos, "Conectar Mercado Pago" volta conectado na hora. Faça um pedido com Pix no cardápio e aprove pelo stub:
+
+```bash
+curl http://localhost:4010/__stub/state
+curl -X POST http://localhost:4010/__stub/payments/<id>/approve
+```
+
+Também existem `/reject`, `/expire` e `POST /__stub/fail-refresh` (simula o token que não renova). O Card Payment Brick não funciona com o stub: ele fala direto com o Mercado Pago e precisa de uma chave pública de teste real.
+
+Nunca defina `MP_API_BASE_URL` ou `MP_AUTH_BASE_URL` em produção.
+
+## 8. Validar com a conta sandbox real
+
+Quando as credenciais de teste estiverem em mãos (`MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_WEBHOOK_SECRET`):
+
+- [ ] Remover `MP_API_BASE_URL` e `MP_AUTH_BASE_URL` do `.env.local`.
+- [ ] Expor o ambiente local com um túnel HTTPS (o Mercado Pago só chama URLs públicas) e apontar `NEXT_PUBLIC_APP_URL` para ele; cadastrar a Redirect URL e a URL de webhook no app do Mercado Pago.
+- [ ] Conectar a loja de teste com um **usuário de teste vendedor**.
+- [ ] Pix: gerar o QR em `/pedido/<token>` e aprovar com o usuário de teste comprador.
+- [ ] Cartão: pagar pelo Card Payment Brick com os cartões de teste (aprovado e recusado).
+- [ ] Cancelar um pedido pago e conferir o estorno no painel do Mercado Pago.

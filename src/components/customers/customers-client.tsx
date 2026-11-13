@@ -1,273 +1,242 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  Calendar,
-  MessageCircle,
-  Search,
-  ShoppingBag,
-  Users,
-  X,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, Loader2, MessageCircle, Phone, Search, Users } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  buildWhatsAppUrl,
-  formatCurrencyCents,
-  formatPhoneBR,
-} from "@/lib/utils";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Segmented } from "@/components/ui/segmented";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import type { ActionResult } from "@/features/auth/actions";
+import { getCustomerOrdersAction } from "@/features/customers/actions";
+import { averageTicketCents, customerSummary, daysAgoLabel, filterCustomers, firstName, sortCustomers, type CustomerSort } from "@/lib/customers/list";
+import { FULFILLMENT_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
+import { buildWhatsAppUrl, cn, formatCurrencyCents, formatPhoneBR } from "@/lib/utils";
 import type { Customer, Order } from "@/types/domain.types";
 
+type LoadOrders = (storeId: string, customerId: string) => Promise<ActionResult<Order[]>>;
+
+const whatsappHref = (customer: Customer, storeName: string) => buildWhatsAppUrl(customer.phone, `Olá, ${firstName(customer.name)}! Aqui é da ${storeName}.`);
+
+/**
+ * Customers: everyone who ordered, searchable and sortable, with the order
+ * history and a WhatsApp shortcut in a side panel.
+ */
 export function CustomersClient({
+  storeId,
   storeName,
   customers,
-  orders,
+  loadOrders = getCustomerOrdersAction,
 }: {
+  storeId: string;
   storeName: string;
   customers: Customer[];
-  orders: Order[];
+  loadOrders?: LoadOrders;
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
-    null
-  );
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<CustomerSort>("recent");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const filteredCustomers = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q)
-    );
-  }, [customers, searchQuery]);
+  const summary = useMemo(() => customerSummary(customers), [customers]);
+  const rows = useMemo(() => sortCustomers(filterCustomers(customers, query), sort), [customers, query, sort]);
+  const selected = customers.find((c) => c.id === selectedId) ?? null;
 
-  const customerOrders = useMemo(() => {
-    if (!selectedCustomer) return [];
-    return orders.filter(
-      (o) =>
-        o.customer_id === selectedCustomer.id ||
-        o.customer_phone_snapshot === selectedCustomer.phone
+  if (customers.length === 0) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader title="Clientes" description={`Quem pede em ${storeName}, com histórico e contato.`} />
+        <EmptyState
+          icon={<Users className="h-5 w-5" />}
+          title="Seus clientes aparecem aqui"
+          description="A cada pedido, pelo cardápio ou pelo balcão, o cliente é salvo com nome, telefone e histórico. Não precisa cadastrar ninguém."
+        />
+      </div>
     );
-  }, [orders, selectedCustomer]);
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="font-display text-display-sm font-extrabold sm:text-3xl">
-            Clientes & Atendimento
-          </h1>
-          <p className="text-xs text-foreground-muted">
-            Base de clientes de {storeName}, histórico de pedidos e contato
-            rápido via WhatsApp.
-          </p>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader title="Clientes" description={`Quem pede em ${storeName}. O cadastro é automático, a cada pedido.`} />
 
-        <Badge variant="secondary" className="tabular-nums">
-          {customers.length} cliente(s) cadastrado(s)
-        </Badge>
-      </div>
+      <section aria-label="Resumo dos clientes" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <Stat label="Clientes" value={String(summary.total)} />
+        <Stat label="Voltaram a pedir" value={String(summary.returning)} hint="2 pedidos ou mais" />
+        <Stat label="Total já pedido" value={formatCurrencyCents(summary.spentCents)} className="col-span-2 lg:col-span-1" />
+      </section>
 
-      {/* Search Bar */}
-      <div className="rounded-2xl border border-border bg-surface p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-foreground-muted" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar cliente por nome ou número de telefone/WhatsApp..."
-            className="pl-9"
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative lg:w-80">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-subtle" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nome ou telefone"
+            aria-label="Buscar cliente"
+            className="h-11 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-sm placeholder:text-foreground-subtle focus-visible:border-brand/60 focus-visible:outline-none"
           />
         </div>
+        <Segmented
+          name="Ordenar clientes"
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: "recent", label: "Recentes" },
+            { value: "spent", label: "Mais gastou" },
+            { value: "orders", label: "Mais pedidos" },
+          ]}
+        />
       </div>
 
-      {/* Customers Table */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-        {filteredCustomers.length === 0 ? (
-          <div className="p-12 text-center">
-            <Users className="mx-auto h-10 w-10 text-foreground-muted" />
-            <h3 className="mt-3 font-display text-base font-bold text-foreground">
-              Nenhum cliente encontrado
-            </h3>
-            <p className="mx-auto mt-1 max-w-md text-xs text-foreground-muted">
-              Os clientes são registrados e atualizados automaticamente sempre
-              que realizam um pedido pelo cardápio digital ou balcão.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border bg-surface text-[11px] uppercase tracking-wider text-foreground-muted">
-                  <th className="px-4 py-3.5 font-semibold">Cliente</th>
-                  <th className="px-4 py-3.5 font-semibold">Telefone / WhatsApp</th>
-                  <th className="px-4 py-3.5 font-semibold">Total de Pedidos</th>
-                  <th className="px-4 py-3.5 font-semibold">Total Gasto</th>
-                  <th className="px-4 py-3.5 font-semibold">Último Pedido</th>
-                  <th className="px-4 py-3.5 text-right font-semibold">
-                    Atendimento
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredCustomers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    className="transition-colors hover:bg-surface/60"
-                  >
-                    <td className="px-4 py-3.5 font-semibold text-foreground">
-                      {customer.name}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-foreground-muted tabular-nums">
-                      {formatPhoneBR(customer.phone)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge variant="secondary" className="tabular-nums">
-                        {customer.total_orders} pedido(s)
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3.5 font-display font-bold text-foreground tabular-nums">
-                      {formatCurrencyCents(customer.total_spent_cents)}
-                    </td>
-                    <td className="px-4 py-3.5 text-foreground-muted tabular-nums">
-                      {customer.last_order_at
-                        ? new Date(customer.last_order_at).toLocaleDateString(
-                            "pt-BR"
-                          )
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <div className="inline-flex items-center gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setSelectedCustomer(customer)}
-                        >
-                          <ShoppingBag className="h-3.5 w-3.5" />
-                          <span>Histórico</span>
-                        </Button>
-                        <Button size="sm" asChild>
-                          <a
-                            href={buildWhatsAppUrl(
-                              customer.phone,
-                              `Olá ${customer.name}, tudo bem? Aqui é da ${storeName}!`
-                            )}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            <span>WhatsApp</span>
-                          </a>
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Customer Order History Drawer */}
-      {selectedCustomer && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-sm">
-          <div className="flex h-full w-full max-w-md flex-col border-l border-border bg-surface-card p-6 shadow-2xl overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-border pb-4">
-              <div>
-                <h2 className="font-display text-lg font-bold text-foreground">
-                  {selectedCustomer.name}
-                </h2>
-                <p className="text-xs text-foreground-muted tabular-nums">
-                  {formatPhoneBR(selectedCustomer.phone)}
-                </p>
-              </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Nenhum cliente encontrado" description="Confira o nome ou tente só os últimos dígitos do telefone." />
+      ) : (
+        <ul aria-label="Clientes" className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface/50">
+          <li aria-hidden className="hidden grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))_5.5rem] gap-4 px-4 py-3 text-xs text-foreground-muted md:grid">
+            <span>Cliente</span>
+            <span className="text-right">Pedidos</span>
+            <span className="text-right">Total gasto</span>
+            <span className="text-right">Último pedido</span>
+            <span />
+          </li>
+          {rows.map((c) => (
+            <li key={c.id} className="flex items-center gap-2 pr-3 transition-colors hover:bg-surface-card/50">
               <button
                 type="button"
-                onClick={() => setSelectedCustomer(null)}
-                className="text-foreground-muted hover:text-foreground"
+                onClick={() => setSelectedId(c.id)}
+                aria-label={`Ver ${c.name}`}
+                className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/50 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]"
               >
-                <X className="h-5 w-5" />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{c.name}</span>
+                  <span className="block truncate font-mono text-xs text-foreground-muted">{formatPhoneBR(c.phone)}</span>
+                </span>
+                <span className="text-right font-mono text-sm md:hidden">{formatCurrencyCents(c.total_spent_cents)}</span>
+                <span className="col-span-2 text-xs text-foreground-muted md:hidden">
+                  {c.total_orders} {c.total_orders === 1 ? "pedido" : "pedidos"} · {daysAgoLabel(c.last_order_at)}
+                </span>
+                <span className="hidden text-right font-mono text-sm md:block">{c.total_orders}</span>
+                <span className="hidden text-right font-mono text-sm md:block">{formatCurrencyCents(c.total_spent_cents)}</span>
+                <span className="hidden text-right text-sm text-foreground-muted md:block">{daysAgoLabel(c.last_order_at)}</span>
               </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-border bg-surface p-3.5">
-                <span className="text-[11px] text-foreground-muted">
-                  Pedidos Realizados
-                </span>
-                <p className="mt-1 font-display text-xl font-extrabold text-foreground tabular-nums">
-                  {selectedCustomer.total_orders}
-                </p>
-              </div>
-              <div className="rounded-xl border border-border bg-surface p-3.5">
-                <span className="text-[11px] text-foreground-muted">
-                  Valor Acumulado
-                </span>
-                <p className="mt-1 font-display text-xl font-extrabold text-brand tabular-nums">
-                  {formatCurrencyCents(selectedCustomer.total_spent_cents)}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <Button className="w-full" asChild>
-                <a
-                  href={buildWhatsAppUrl(
-                    selectedCustomer.phone,
-                    `Olá ${selectedCustomer.name}! Aqui é da ${storeName}.`
-                  )}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span>Iniciar Conversa no WhatsApp</span>
-                </a>
-              </Button>
-            </div>
-
-            <div className="mt-6 space-y-3 border-t border-border pt-4">
-              <h3 className="font-display text-xs font-bold uppercase tracking-wider text-foreground-muted">
-                Histórico de Pedidos ({customerOrders.length})
-              </h3>
-
-              {customerOrders.length === 0 ? (
-                <p className="text-xs text-foreground-muted">
-                  Nenhum pedido listado.
-                </p>
-              ) : (
-                customerOrders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="rounded-xl border border-border bg-surface p-3.5 text-xs"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-brand tabular-nums">
-                        Pedido #{order.order_number}
-                      </span>
-                      <Badge variant="secondary">{order.status}</Badge>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-foreground-muted">
-                      <span className="inline-flex items-center gap-1 tabular-nums">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(order.created_at).toLocaleDateString("pt-BR")}
-                      </span>
-                      <span className="font-bold text-foreground tabular-nums">
-                        {formatCurrencyCents(order.total_cents)}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+              <a
+                href={whatsappHref(c, storeName)}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Chamar ${c.name} no WhatsApp`}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-elevated hover:text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+              >
+                <MessageCircle className="h-4 w-4" />
+              </a>
+              <ChevronRight aria-hidden className="hidden h-4 w-4 shrink-0 text-foreground-subtle md:block" />
+            </li>
+          ))}
+        </ul>
       )}
+
+      {selected ? <CustomerSheet storeId={storeId} storeName={storeName} customer={selected} loadOrders={loadOrders} onClose={() => setSelectedId(null)} /> : null}
     </div>
   );
 }
 
+function Stat({ label, value, hint, className }: { label: string; value: string; hint?: string; className?: string }) {
+  return (
+    <div className={cn("rounded-2xl border border-border bg-surface p-4 sm:p-5", className)}>
+      <p className="text-xs text-foreground-muted">{label}</p>
+      <p className="mt-2 truncate font-mono text-xl font-medium tabular-nums sm:text-2xl">{value}</p>
+      {hint ? <p className="mt-1 truncate text-[11px] text-foreground-subtle">{hint}</p> : null}
+    </div>
+  );
+}
+
+function CustomerSheet({ storeId, storeName, customer, loadOrders, onClose }: { storeId: string; storeName: string; customer: Customer; loadOrders: LoadOrders; onClose: () => void }) {
+  const [state, setState] = useState<{ status: "loading" } | { status: "error"; error: string } | { status: "ready"; orders: Order[] }>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+    loadOrders(storeId, customer.id).then((res) => {
+      if (cancelled) return;
+      setState(res.success ? { status: "ready", orders: res.data ?? [] } : { status: "error", error: res.error ?? "Não foi possível carregar os pedidos." });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadOrders, storeId, customer.id]);
+
+  return (
+    <Sheet open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <SheetContent className="p-0" aria-describedby="customer-sheet-description">
+        <div className="border-b border-border px-6 py-5 pr-14">
+          <SheetTitle className="font-display text-xl font-bold">{customer.name}</SheetTitle>
+          <SheetDescription id="customer-sheet-description" className="mt-1 font-mono text-sm text-foreground-muted">
+            {formatPhoneBR(customer.phone)}
+          </SheetDescription>
+          <div className="mt-4 flex gap-2">
+            <Button asChild className="flex-1">
+              <a href={whatsappHref(customer, storeName)} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="h-4 w-4" /> WhatsApp
+              </a>
+            </Button>
+            <Button asChild variant="secondary">
+              <a href={`tel:${customer.phone}`}>
+                <Phone className="h-4 w-4" /> Ligar
+              </a>
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <dl className="grid grid-cols-3 gap-2">
+            {[
+              ["Pedidos", String(customer.total_orders)],
+              ["Total gasto", formatCurrencyCents(customer.total_spent_cents)],
+              ["Ticket médio", formatCurrencyCents(averageTicketCents(customer))],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-border p-3">
+                <dt className="text-[11px] text-foreground-muted">{label}</dt>
+                <dd className="mt-1 truncate font-mono text-sm">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-xs text-foreground-subtle">
+            Cliente desde {new Date(customer.created_at).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })} · último pedido {daysAgoLabel(customer.last_order_at)}
+          </p>
+
+          <h3 className="mt-7 font-display text-sm font-bold">Histórico de pedidos</h3>
+          {state.status === "loading" ? (
+            <p role="status" className="mt-4 flex items-center gap-2 text-sm text-foreground-muted">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando pedidos…
+            </p>
+          ) : state.status === "error" ? (
+            <p role="alert" className="mt-4 text-sm text-danger">
+              {state.error}
+            </p>
+          ) : state.orders.length === 0 ? (
+            <p className="mt-4 text-sm text-foreground-muted">Nenhum pedido registrado.</p>
+          ) : (
+            <ul aria-label="Pedidos do cliente" className="mt-2 divide-y divide-border">
+              {state.orders.map((o) => (
+                <li key={o.id} className="py-3.5 text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span>
+                      <span className="font-mono text-foreground-muted">#{o.order_number}</span>{" "}
+                      <span className={cn("rounded-full px-2 py-0.5 text-[11px]", o.status === "CANCELLED" ? "bg-danger/10 text-danger" : o.status === "COMPLETED" ? "bg-surface-card text-foreground-muted" : "bg-brand/15 text-brand")}>
+                        {ORDER_STATUS_LABEL[o.status]}
+                      </span>
+                    </span>
+                    <span className={cn("font-mono", o.status === "CANCELLED" && "text-foreground-subtle line-through")}>{formatCurrencyCents(o.total_cents)}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-foreground-subtle">
+                    {new Date(o.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })} · {FULFILLMENT_LABEL[o.fulfillment_type]}
+                  </p>
+                  {o.items?.length ? <p className="mt-1.5 text-[13px] text-foreground-muted">{o.items.map((i) => `${i.quantity}× ${i.product_name_snapshot}`).join(" · ")}</p> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}

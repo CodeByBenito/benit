@@ -25,7 +25,7 @@ export default function RegisterPage() {
 
   if (confirm) {
     return (
-      <AuthShell title="Confira seu e-mail." subtitle="Enviamos um link de confirmação. Depois de confirmar, é só entrar e configurar sua loja.">
+      <AuthShell title="Confira seu e-mail." subtitle="Enviamos um link de confirmação. Ao abrir o link, você já cai na configuração da sua loja.">
         <div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 p-5 text-sm text-success">
           <MailCheck className="h-5 w-5 shrink-0" /> Conta criada. Não achou o e-mail? Olhe a caixa de spam.
         </div>
@@ -65,14 +65,25 @@ export default function RegisterPage() {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="password">Senha</Label>
-          <Input id="password" name="password" type="password" required minLength={6} autoComplete="new-password" className="h-11" />
-          <p className="text-xs text-foreground-subtle">Mínimo de 6 caracteres.</p>
+          <Input id="password" name="password" type="password" required minLength={8} autoComplete="new-password" className="h-11" />
+          <p className="text-xs text-foreground-subtle">Mínimo de 8 caracteres.</p>
         </div>
         <Button type="submit" size="lg" className="w-full" disabled={pending}>
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {pending ? "Criando conta…" : "Criar conta"}
           {!pending ? <ArrowRight className="h-4 w-4" /> : null}
         </Button>
+        <p className="text-center text-xs leading-relaxed text-foreground-subtle">
+          Ao criar a conta, você concorda com os{" "}
+          <Link href="/termos" className="text-foreground-muted underline underline-offset-4 hover:text-foreground">
+            Termos de uso
+          </Link>{" "}
+          e a{" "}
+          <Link href="/privacidade" className="text-foreground-muted underline underline-offset-4 hover:text-foreground">
+            Política de privacidade
+          </Link>
+          .
+        </p>
       </form>
     </AuthShell>
   );
